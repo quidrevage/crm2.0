@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+/* Design tokens — the single source for colour, type and elevation. */
+@theme {
+  --color-bg: #fafaf9;
+  --color-surface: #ffffff;
+  --color-subtle: #f4f4f2;
+  --color-fg: #202124;
+  --color-muted: #6b6f77;
+  --color-line: #e7e8ea;
+  --color-line-strong: #d3d5d9;
+  --color-accent: #2f4a73;
+  --color-accent-hover: #263d60;
+  --color-accent-soft: #eef2f7;
+  --color-success: #3a7553;
+  --color-success-soft: #edf5f0;
+  --color-warning: #8f621a;
+  --color-warning-soft: #faf3e6;
+  --color-danger: #ad3f37;
+  --color-danger-soft: #fbeeed;
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --shadow-overlay: 0 10px 28px rgb(32 33 36 / 0.12), 0 0 0 1px rgb(32 33 36 / 0.06);
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "cv11", "ss03";
+}
+
+/* Native date/time/select controls follow the light theme. */
+:root {
+  color-scheme: light;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
