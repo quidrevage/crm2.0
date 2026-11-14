@@ -2,14 +2,16 @@ import type { Metadata } from "next";
 import { Avatar, Badge, Card, DetailList, PageHeader } from "@/components/ui/display";
 import { Button } from "@/components/ui/button";
 import { Tabs } from "@/components/ui/tabs";
+import { cancelInvitation } from "@/features/auth/actions";
+import { InviteForm, ProfileForm } from "@/features/auth/forms";
 import {
   caseStatusLabel, courtTypes, documentCategories, matterTypes, partyRoles, practiceAreas, roleLabel,
 } from "@/i18n/uk";
-import { currentUser, users } from "@/mocks/data";
+import { requireUser } from "@/lib/auth";
+import { formatDate } from "@/lib/dates";
+import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Налаштування" };
-
-const MAX_USERS = 2;
 
 function ReferenceList({ title, values }: { title: string; values: readonly string[] }) {
   return (
@@ -25,8 +27,26 @@ function ReferenceList({ title, values }: { title: string; values: readonly stri
   );
 }
 
-export default function SettingsPage() {
-  const limitReached = users.length >= MAX_USERS;
+export default async function SettingsPage() {
+  const user = await requireUser();
+  const isAdmin = user.role === "admin";
+  const supabase = await createClient();
+
+  const [profiles, settings, invitations, own] = await Promise.all([
+    supabase.from("profiles").select("id, full_name, email, role, is_active").order("created_at"),
+    supabase.from("app_settings").select("max_users").single(),
+    // Row-level security returns invitations to the administrator only.
+    supabase.from("user_invitations").select("id, email, full_name, created_at").is("accepted_at", null).order("created_at"),
+    supabase.from("profiles").select("advocate_certificate_no").eq("id", user.id).single(),
+  ]);
+  if (profiles.error || settings.error) throw new Error("Failed to load settings");
+
+  const users = profiles.data;
+  const maxUsers = settings.data.max_users;
+  const activeCount = users.filter((u) => u.is_active).length;
+  const pending = invitations.data ?? [];
+  const seatFree = activeCount < maxUsers;
+
   return (
     <>
       <PageHeader title="Налаштування" />
@@ -38,50 +58,72 @@ export default function SettingsPage() {
               <Card title="Мій профіль" className="max-w-2xl">
                 <DetailList
                   items={[
-                    { label: "Ім’я та прізвище", value: currentUser.fullName },
-                    { label: "Електронна пошта", value: currentUser.email },
-                    { label: "Роль", value: roleLabel[currentUser.role] },
-                    { label: "Статус адвоката", value: currentUser.isAdvocate ? "Адвокат" : "Не вказано" },
+                    { label: "Електронна пошта", value: user.email },
+                    { label: "Роль", value: roleLabel[user.role] },
                   ]}
                 />
-                <p className="mt-4 border-t border-line pt-3 text-[13px] text-muted">
-                  Редагування профілю та зміна пароля стануть доступні після підключення автентифікації.
-                </p>
+                <div className="mt-4 border-t border-line pt-4">
+                  <ProfileForm fullName={user.fullName} isAdvocate={user.isAdvocate} certificateNo={own.data?.advocate_certificate_no ?? ""} />
+                </div>
               </Card>
             ),
           },
           {
             id: "users", label: "Користувачі", count: users.length,
             content: (
-              <Card
-                title={`Користувачі: ${users.length} з ${MAX_USERS}`}
-                flush
-                className="max-w-2xl"
-                action={
-                  <Button size="sm" disabled={limitReached}>
-                    Запросити користувача
-                  </Button>
-                }
-              >
-                <ul className="divide-y divide-line">
-                  {users.map((user) => (
-                    <li key={user.id} className="flex items-center gap-3 px-4 py-3">
-                      <Avatar name={user.fullName} className="h-8 w-8 text-xs" />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium">{user.fullName}</p>
-                        <p className="truncate text-[13px] text-muted">{user.email}</p>
-                      </div>
-                      <Badge tone={user.role === "admin" ? "accent" : "neutral"}>{roleLabel[user.role]}</Badge>
-                    </li>
-                  ))}
-                </ul>
-                {limitReached && (
-                  <p className="border-t border-line px-4 py-3 text-[13px] text-muted">
-                    Досягнуто ліміту в {MAX_USERS} користувачі. Публічної реєстрації немає: обліковий запис створюється лише за
-                    запрошенням адміністратора.
-                  </p>
+              <div className="max-w-2xl space-y-4">
+                <Card title={`Активні користувачі: ${activeCount} з ${maxUsers}`} flush>
+                  <ul className="divide-y divide-line">
+                    {users.map((u) => (
+                      <li key={u.id} className="flex items-center gap-3 px-4 py-3">
+                        <Avatar name={u.full_name || u.email} className="h-8 w-8 text-xs" />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium">{u.full_name || "Ім’я не вказано"}</p>
+                          <p className="truncate text-[13px] text-muted">{u.email}</p>
+                        </div>
+                        {!u.is_active && <Badge>Неактивний</Badge>}
+                        <Badge tone={u.role === "admin" ? "accent" : "neutral"}>{roleLabel[u.role as "admin" | "member"]}</Badge>
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+
+                {isAdmin && pending.length > 0 && (
+                  <Card title="Надіслані запрошення" flush>
+                    <ul className="divide-y divide-line">
+                      {pending.map((inv) => (
+                        <li key={inv.id} className="flex items-center gap-3 px-4 py-3">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium">{inv.full_name || inv.email}</p>
+                            <p className="num truncate text-[13px] text-muted">
+                              {inv.email} · надіслано {formatDate(inv.created_at)}
+                            </p>
+                          </div>
+                          <form action={cancelInvitation}>
+                            <input type="hidden" name="id" value={inv.id} />
+                            <Button type="submit" size="sm">
+                              Скасувати
+                            </Button>
+                          </form>
+                        </li>
+                      ))}
+                    </ul>
+                  </Card>
                 )}
-              </Card>
+
+                {isAdmin && (
+                  <Card title="Запросити користувача">
+                    {seatFree ? (
+                      <InviteForm />
+                    ) : (
+                      <p className="text-[13px] text-muted">
+                        Усі місця зайнято: система розрахована на {maxUsers} користувачів. Публічної реєстрації немає — обліковий запис
+                        створюється лише за запрошенням адміністратора.
+                      </p>
+                    )}
+                  </Card>
+                )}
+              </div>
             ),
           },
           {
@@ -89,7 +131,7 @@ export default function SettingsPage() {
             content: (
               <div className="space-y-4">
                 <p className="text-[13px] text-muted">
-                  Початкові значення довідників. Адміністратор зможе додавати, перейменовувати та вимикати їх після підключення бази даних.
+                  Початкові значення довідників. Редагування буде доступне адміністратору після підключення модулів до бази даних.
                 </p>
                 <div className="grid gap-4 lg:grid-cols-2">
                   <ReferenceList title="Галузі права" values={practiceAreas} />
@@ -109,8 +151,8 @@ export default function SettingsPage() {
                 <DetailList
                   columns={1}
                   items={[
-                    { label: "Пароль", value: "Зміна пароля — після підключення автентифікації" },
-                    { label: "Двофакторна автентифікація", value: "Буде налаштовано разом з автентифікацією" },
+                    { label: "Пароль", value: "Щоб змінити пароль, вийдіть і скористайтеся посиланням «Забули пароль?» на сторінці входу." },
+                    { label: "Двофакторна автентифікація", value: "Ще не підключено" },
                     { label: "Часовий пояс", value: "Europe/Kyiv" },
                     { label: "Формат дати та валюта", value: "ДД.ММ.РРРР · гривня (₴)" },
                   ]}

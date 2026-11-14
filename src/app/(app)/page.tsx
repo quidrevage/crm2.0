@@ -8,11 +8,13 @@ import { TasksTable } from "@/features/tasks/tasks";
 import { caseStatusLabel, caseStatusTone } from "@/i18n/uk";
 import { dayKey, formatDate, shiftKey, WEEKDAYS_LONG, weekdayIndex } from "@/lib/dates";
 import { isOpenTask, isOverdue } from "@/lib/tasks";
-import { activity, cases, clients, currentUser, events, tasks } from "@/mocks/data";
+import { requireUser } from "@/lib/auth";
+import { activity, cases, clients, events, tasks } from "@/mocks/data";
 
 const more = "text-[13px] text-accent hover:underline";
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
+  const user = await requireUser();
   const today = dayKey();
   const weekAhead = shiftKey(today, 7);
 
@@ -29,7 +31,7 @@ export default function DashboardPage() {
   return (
     <>
       <PageHeader
-        title={`Добрий день, ${currentUser.fullName.split(" ")[0]}`}
+        title={user.fullName ? `Добрий день, ${user.fullName.split(" ")[0]}` : "Добрий день"}
         meta={
           <span className="num">
             {WEEKDAYS_LONG[weekdayIndex(today)]}, {formatDate(today)}

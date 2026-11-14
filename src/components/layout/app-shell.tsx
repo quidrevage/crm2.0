@@ -6,7 +6,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { roleLabel } from "@/i18n/uk";
-import { currentUser } from "@/mocks/data";
+import { signOut } from "@/features/auth/actions";
+import type { Role } from "@/types/domain";
 import { RecordFormProvider, useRecordForm } from "@/features/quick-create";
 import { Button, IconButton } from "@/components/ui/button";
 import { Avatar, Badge } from "@/components/ui/display";
@@ -16,7 +17,9 @@ import { ToastProvider } from "@/components/ui/toast";
 import { GlobalSearch } from "./global-search";
 import { Logo, MobileBar, SidebarNav } from "./nav";
 
-function Header() {
+export type ShellUser = { displayName: string; role: Role };
+
+function Header({ user }: { user: ShellUser }) {
   const form = useRecordForm();
   const icon = "h-4 w-4";
   return (
@@ -51,18 +54,18 @@ function Header() {
               aria-label="Меню користувача"
               className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent/35"
             >
-              <Avatar name={currentUser.fullName} className="h-8 w-8 text-xs" />
+              <Avatar name={user.displayName} className="h-8 w-8 text-xs" />
             </button>
           }
           header={
             <>
-              <p className="font-medium">{currentUser.fullName}</p>
-              <p className="text-muted">{roleLabel[currentUser.role]}</p>
+              <p className="font-medium break-all">{user.displayName}</p>
+              <p className="text-muted">{roleLabel[user.role]}</p>
             </>
           }
           items={[
             { label: "Профіль і налаштування", icon: <UserRound className={icon} />, href: "/settings" },
-            { label: "Вийти", icon: <LogOut className={icon} />, href: "/login", separatorBefore: true },
+            { label: "Вийти", icon: <LogOut className={icon} />, onSelect: () => void signOut(), separatorBefore: true },
           ]}
         />
       </div>
@@ -70,7 +73,7 @@ function Header() {
   );
 }
 
-export function AppShell({ children }: { children: ReactNode }) {
+export function AppShell({ children, user }: { children: ReactNode; user: ShellUser }) {
   const [collapsed, setCollapsed] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -97,7 +100,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </aside>
 
           <div className="flex min-w-0 flex-1 flex-col">
-            <Header />
+            <Header user={user} />
             <main className="flex-1 px-4 pt-4 pb-24 lg:px-6 lg:pt-5 lg:pb-10">
               <div className="mx-auto max-w-[1180px]">{children}</div>
             </main>
