@@ -1,17 +1,17 @@
 import type { Expense, FeeAgreement, Payment } from "@/types/domain";
 
-const sum = (rows: Array<{ amount: number }>) => rows.reduce((total, row) => total + row.amount, 0);
+const sum = (rows: Array<{ amount: number }>) => Math.round(rows.reduce((total, row) => total + row.amount, 0) * 100) / 100;
 
 export type FinanceTotals = { agreed: number; received: number; outstanding: number; expenses: number };
 
-/** Agreed fees, received payments and expenses are kept apart; the balance is always derived. */
+/** Agreed fees, received payments and expenses are kept apart; the balance is always derived, never stored. */
 export function financeTotals(fees: FeeAgreement[], payments: Payment[], expenses: Expense[]): FinanceTotals {
   const agreed = sum(fees);
   const received = sum(payments);
-  return { agreed, received, outstanding: agreed - received, expenses: sum(expenses) };
+  return { agreed, received, outstanding: Math.round((agreed - received) * 100) / 100, expenses: sum(expenses) };
 }
 
-/** Adds the amount received towards each agreement (matched by matter). */
+/** Amount received towards each agreement: payments for the same client and matter. */
 export function withPaid(fees: FeeAgreement[], payments: Payment[]) {
   return fees.map((fee) => ({
     ...fee,

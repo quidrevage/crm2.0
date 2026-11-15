@@ -8,6 +8,7 @@ create role service_role nologin bypassrls;
 create schema extensions;
 create schema auth;
 create schema storage;
+create publication supabase_realtime;
 
 create table auth.users (
   id uuid primary key default gen_random_uuid(),
@@ -31,7 +32,8 @@ create table storage.buckets (
 create table storage.objects (
   id uuid primary key default gen_random_uuid(),
   bucket_id text references storage.buckets (id),
-  name text not null
+  name text not null,
+  owner_id text default (auth.uid())::text
 );
 alter table storage.objects enable row level security;
 

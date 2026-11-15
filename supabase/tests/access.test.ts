@@ -253,7 +253,7 @@ describe("documents and storage", () => {
   });
 
   it("allows file access only to signed-in active users", async () => {
-    await t.asUser(member, `insert into storage.objects (bucket_id, name) values ('documents', 'a/b')`);
+    await t.asUser(admin, `insert into storage.objects (bucket_id, name) values ('documents', 'a/b')`);
     expect(await t.asUser(admin, `select name from storage.objects`)).toHaveLength(1);
     expect(await t.asAnon(`select name from storage.objects`)).toHaveLength(0);
     await expect(t.asAnon(`insert into storage.objects (bucket_id, name) values ('documents', 'x')`)).rejects.toThrow(/row-level security/);

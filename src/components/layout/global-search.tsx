@@ -2,65 +2,62 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Briefcase, FileText, Landmark, ListChecks, Search, Users, type LucideIcon } from "lucide-react";
-import { cases, clients, courts, documents, tasks } from "@/mocks/data";
+import { useEffect, useRef, useState } from "react";
+import { Briefcase, FileText, Landmark, ListChecks, Loader2, Search, Users, type LucideIcon } from "lucide-react";
+import { globalSearch, type SearchHit } from "@/features/search/actions";
 
-type Hit = { key: string; label: string; sub?: string; href: string };
-type Group = { title: string; icon: LucideIcon; hits: Hit[] };
+const groups: Array<{ kind: SearchHit["kind"]; title: string; icon: LucideIcon; href: (hit: SearchHit) => string }> = [
+  { kind: "client", title: "Клієнти", icon: Users, href: (h) => `/clients/${h.id}` },
+  { kind: "case", title: "Справи", icon: Briefcase, href: (h) => `/cases/${h.id}` },
+  { kind: "document", title: "Документи", icon: FileText, href: (h) => `/documents/${h.id}` },
+  { kind: "task", title: "Завдання", icon: ListChecks, href: (h) => `/tasks?status=all&q=${encodeURIComponent(h.label)}` },
+  { kind: "court", title: "Суди", icon: Landmark, href: (h) => `/courts?q=${encodeURIComponent(h.label)}` },
+];
 
-const LIMIT = 5;
-const has = (q: string, ...fields: Array<string | undefined>) => fields.some((f) => f?.toLowerCase().includes(q));
-
-/** Phase 2 searches the mock data in memory; Phase 4 replaces this with the database search. */
-function search(query: string): Group[] {
-  const q = query.trim().toLowerCase();
-  if (q.length < 2) return [];
-  const groups: Group[] = [
-    {
-      title: "Клієнти", icon: Users,
-      hits: clients.filter((c) => has(q, c.name, c.number, c.edrpou, c.rnokpp, c.phone))
-        .map((c) => ({ key: c.id, label: c.name, sub: c.number, href: `/clients/${c.id}` })),
-    },
-    {
-      title: "Справи", icon: Briefcase,
-      hits: cases.filter((k) => has(q, k.title, k.number, k.courtCaseNumber, k.opposingParty))
-        .map((k) => ({ key: k.id, label: k.title, sub: k.courtCaseNumber ? `${k.number} · № ${k.courtCaseNumber}` : k.number, href: `/cases/${k.id}` })),
-    },
-    {
-      title: "Документи", icon: FileText,
-      hits: documents.filter((d) => has(q, d.name, d.category))
-        .map((d) => ({ key: d.id, label: d.name, sub: d.category, href: `/documents?q=${encodeURIComponent(d.name)}` })),
-    },
-    {
-      title: "Завдання", icon: ListChecks,
-      hits: tasks.filter((t) => has(q, t.title))
-        .map((t) => ({ key: t.id, label: t.title, href: `/tasks?q=${encodeURIComponent(t.title)}` })),
-    },
-    {
-      title: "Суди", icon: Landmark,
-      hits: courts.filter((c) => has(q, c.name, c.city))
-        .map((c) => ({ key: c.id, label: c.name, sub: c.type, href: `/courts?q=${encodeURIComponent(c.name)}` })),
-    },
-  ];
-  return groups.filter((g) => g.hits.length > 0).map((g) => ({ ...g, hits: g.hits.slice(0, LIMIT) }));
-}
-
+/** Searches the database (names and numbers, not file contents) as you type. */
 export function GlobalSearch() {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
+  const [hits, setHits] = useState<SearchHit[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const requestId = useRef(0);
   const pathname = usePathname();
-  const groups = useMemo(() => search(query), [query]);
+  const q = query.trim();
 
   useEffect(() => setOpen(false), [pathname]);
+
+  useEffect(() => {
+    if (q.length < 2) {
+      setHits([]);
+      return;
+    }
+    const id = ++requestId.current;
+    setLoading(true);
+    const timer = window.setTimeout(async () => {
+      try {
+        const result = await globalSearch(q);
+        if (id === requestId.current) {
+          setHits(result);
+          setFailed(false);
+        }
+      } catch {
+        if (id === requestId.current) setFailed(true);
+      } finally {
+        if (id === requestId.current) setLoading(false);
+      }
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [q]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         inputRef.current?.focus();
+        setOpen(true);
       }
       if (e.key === "Escape") setOpen(false);
     }
@@ -75,11 +72,16 @@ export function GlobalSearch() {
     };
   }, []);
 
-  const showPanel = open && query.trim().length >= 2;
+  const showPanel = open && q.length >= 2;
+  const visible = groups.map((g) => ({ ...g, hits: hits.filter((h) => h.kind === g.kind) })).filter((g) => g.hits.length > 0);
 
   return (
     <div ref={rootRef} className="relative min-w-0 flex-1 lg:max-w-md">
-      <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2 text-muted" />
+      {loading ? (
+        <Loader2 aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2 animate-spin text-muted" />
+      ) : (
+        <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2 text-muted" />
+      )}
       <input
         ref={inputRef}
         type="search"
@@ -97,23 +99,22 @@ export function GlobalSearch() {
         className="h-9 w-full rounded-md border border-line bg-bg pr-2 pl-8 text-base outline-none placeholder:text-muted focus:border-accent focus:bg-surface focus:ring-2 focus:ring-accent/15 sm:h-8 sm:text-sm"
       />
       {showPanel && (
-        <div
-          id="global-search-results"
-          className="absolute inset-x-0 top-full z-40 mt-1.5 max-h-[70dvh] overflow-y-auto rounded-md bg-surface p-1 shadow-overlay"
-        >
-          {groups.length === 0 ? (
-            <p className="px-3 py-4 text-center text-[13px] text-muted">Нічого не знайдено за запитом «{query.trim()}»</p>
+        <div id="global-search-results" className="absolute inset-x-0 top-full z-40 mt-1.5 max-h-[70dvh] overflow-y-auto rounded-md bg-surface p-1 shadow-overlay">
+          {failed ? (
+            <p className="px-3 py-4 text-center text-[13px] text-danger">Пошук тимчасово недоступний. Перевірте з’єднання.</p>
+          ) : visible.length === 0 ? (
+            <p className="px-3 py-4 text-center text-[13px] text-muted">{loading ? "Пошук…" : `Нічого не знайдено за запитом «${q}»`}</p>
           ) : (
-            groups.map((group) => (
-              <div key={group.title} className="py-1">
+            visible.map((group) => (
+              <div key={group.kind} className="py-1">
                 <p className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-muted">
                   <group.icon className="h-3.5 w-3.5" />
                   {group.title}
                 </p>
                 {group.hits.map((hit) => (
                   <Link
-                    key={hit.key}
-                    href={hit.href}
+                    key={hit.id}
+                    href={group.href(hit)}
                     onClick={() => {
                       setOpen(false);
                       setQuery("");
@@ -121,12 +122,13 @@ export function GlobalSearch() {
                     className="block rounded px-2 py-1.5 hover:bg-subtle focus-visible:bg-subtle focus-visible:outline-none"
                   >
                     <span className="block truncate text-sm">{hit.label}</span>
-                    {hit.sub && <span className="num block truncate text-xs text-muted">{hit.sub}</span>}
+                    {hit.sublabel && <span className="num block truncate text-xs text-muted">{hit.sublabel}</span>}
                   </Link>
                 ))}
               </div>
             ))
           )}
+          <p className="border-t border-line px-2 pt-1.5 pb-1 text-[11px] text-muted">Пошук за назвами й номерами. Вміст файлів не індексується.</p>
         </div>
       )}
     </div>

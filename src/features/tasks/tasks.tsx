@@ -1,38 +1,59 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { ListChecks } from "lucide-react";
+import { Check, Circle, ListChecks } from "lucide-react";
 import { Badge, Card, EmptyState } from "@/components/ui/display";
-import { DataTable, Pagination, usePagination, type Column } from "@/components/ui/data-table";
-import { SearchInput } from "@/components/ui/form";
+import { DataTable, type Column } from "@/components/ui/data-table";
 import { taskPriorityLabel, taskPriorityTone, taskStatusLabel, taskStatusTone } from "@/i18n/uk";
 import { cn } from "@/lib/cn";
 import { dayKey, formatDate } from "@/lib/dates";
-import { isOpenTask as isOpen, isOverdue } from "@/lib/tasks";
-import { users } from "@/mocks/data";
+import { isOpenTask, isOverdue } from "@/lib/tasks";
 import type { Task } from "@/types/domain";
-import { CaseLink, FilterBar, FilterSelect, UserCell, labelOptions } from "../common";
+import { CaseLink, FilterBar, UrlPagination, UrlSearch, UrlSelect, UserCell, labelOptions, useUrlFilters } from "../common";
+import { editTask } from "../form-values";
+import { useLookups } from "../lookups/context";
 import { useRecordForm } from "../quick-create";
+import { CreateButton, useRunAction } from "../record-actions";
+import { setTaskStatus } from "../records/actions";
 
+/** One-click completion; reopening goes back to "in progress". */
+function TaskCheck({ task }: { task: Task }) {
+  const { run, pending } = useRunAction();
+  const done = task.status === "completed";
+  return (
+    <button
+      type="button"
+      disabled={pending}
+      aria-label={done ? "Позначити як невиконане" : "Позначити як виконане"}
+      title={done ? "Позначити як невиконане" : "Позначити як виконане"}
+      onClick={() =>
+        run(
+          () => setTaskStatus(task.id, task.rowVersion, done ? "in_progress" : "completed"),
+          done ? "Завдання знову відкрито" : "Завдання виконано",
+        )
+      }
+      className={cn(
+        "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition-colors disabled:opacity-50",
+        done ? "border-success bg-success text-white" : "border-line-strong text-transparent hover:border-success hover:text-success",
+      )}
+    >
+      {done ? <Check className="h-3.5 w-3.5" /> : <Circle className="h-3 w-3" />}
+    </button>
+  );
+}
 
 function TaskTitle({ task }: { task: Task }) {
   const form = useRecordForm();
   return (
-    <button
-      type="button"
-      onClick={() =>
-        form.open("task", {
-          isEdit: true,
-          defaults: {
-            title: task.title, description: task.description, assignedTo: task.assignedTo, dueDate: task.dueDate ?? "",
-            priority: task.priority, status: task.status, clientId: task.clientId ?? "", caseId: task.caseId ?? "",
-          },
-        })
-      }
-      className={cn("text-left font-medium hover:text-accent hover:underline", !isOpen(task) && "text-muted line-through")}
-    >
-      {task.title}
-    </button>
+    <span className="flex items-center gap-2.5">
+      <TaskCheck task={task} />
+      <button
+        type="button"
+        onClick={() => form.open("task", editTask(task))}
+        className={cn("text-left font-medium hover:text-accent hover:underline", !isOpenTask(task) && "text-muted line-through")}
+      >
+        {task.title}
+      </button>
+    </span>
   );
 }
 
@@ -56,61 +77,55 @@ function taskColumns(compact: boolean, showCase: boolean): Column<Task>[] {
   return columns.filter((c) => (showCase || c.key !== "case") && (!compact || !["case", "status", "priority"].includes(c.key)));
 }
 
-type TasksTableProps = { rows: Task[]; compact?: boolean; showCase?: boolean; emptyTitle?: string };
+type TasksTableProps = { rows: Task[]; compact?: boolean; showCase?: boolean; empty?: React.ReactNode; emptyTitle?: string };
 
-export function TasksTable({ rows, compact = false, showCase = true, emptyTitle = "Завдань немає" }: TasksTableProps) {
+export function TasksTable({ rows, compact = false, showCase = true, empty, emptyTitle = "Завдань немає" }: TasksTableProps) {
   return (
     <DataTable
       columns={taskColumns(compact, showCase)}
       rows={rows}
       rowKey={(t) => t.id}
-      empty={<EmptyState icon={<ListChecks className="h-6 w-6" />} title={emptyTitle} />}
+      empty={empty ?? <EmptyState icon={<ListChecks className="h-6 w-6" />} title={emptyTitle} />}
     />
   );
 }
 
-export function TasksList({ rows, initialQuery = "" }: { rows: Task[]; initialQuery?: string }) {
-  const [query, setQuery] = useState(initialQuery);
-  const [status, setStatus] = useState("");
-  const [assignee, setAssignee] = useState("");
-  const [priority, setPriority] = useState("");
+const statusOptions = [{ value: "all", label: "Усі статуси" }, ...labelOptions(taskStatusLabel)];
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return rows
-      .filter(
-        (t) =>
-          (!status || t.status === status) &&
-          (!assignee || t.assignedTo === assignee) &&
-          (!priority || t.priority === priority) &&
-          (!q || t.title.toLowerCase().includes(q)),
-      )
-      .sort((a, b) => Number(!isOpen(a)) - Number(!isOpen(b)) || (a.dueDate ?? "9999").localeCompare(b.dueDate ?? "9999"));
-  }, [rows, query, status, assignee, priority]);
-
-  const paging = usePagination(filtered);
+export function TasksList({ rows, total, page, pageSize }: { rows: Task[]; total: number; page: number; pageSize: number }) {
+  const { users, me } = useLookups();
+  const filters = useUrlFilters();
+  const filtered = ["q", "status", "assignee", "priority", "due"].some((k) => filters.get(k));
 
   return (
     <Card flush>
-      <FilterBar>
-        <SearchInput
-          className="w-full sm:w-64"
-          placeholder="Назва завдання…"
-          aria-label="Пошук завдань"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-        <FilterSelect label="Статус" value={status} onChange={setStatus} options={labelOptions(taskStatusLabel)} />
-        <FilterSelect
+      <FilterBar pending={filters.pending}>
+        <UrlSearch placeholder="Назва або опис завдання…" label="Пошук завдань" className="w-full sm:w-64" />
+        <UrlSelect param="status" label="Статус" allLabel="Відкриті" options={statusOptions} />
+        <UrlSelect
+          param="assignee"
           label="Виконавець"
-          value={assignee}
-          onChange={setAssignee}
-          options={users.map((u) => ({ value: u.id, label: u.fullName }))}
+          options={users.map((u) => ({ value: u.id, label: u.id === me.id ? `${u.fullName} (я)` : u.fullName }))}
         />
-        <FilterSelect label="Пріоритет" value={priority} onChange={setPriority} options={labelOptions(taskPriorityLabel)} />
+        <UrlSelect param="priority" label="Пріоритет" options={labelOptions(taskPriorityLabel)} />
+        <UrlSelect param="due" label="Термін" allLabel="Будь-який термін" options={[{ value: "today", label: "Сьогодні" }, { value: "overdue", label: "Прострочені" }]} />
       </FilterBar>
-      <TasksTable rows={paging.pageRows} emptyTitle="Завдань за цими умовами немає" />
-      <Pagination page={paging.page} pageCount={paging.pageCount} total={paging.total} pageSize={paging.pageSize} onChange={paging.setPage} />
+      <TasksTable
+        rows={rows}
+        empty={
+          filtered ? (
+            <EmptyState icon={<ListChecks className="h-6 w-6" />} title="Завдань за цими умовами немає" />
+          ) : (
+            <EmptyState
+              icon={<ListChecks className="h-6 w-6" />}
+              title="Відкритих завдань немає"
+              hint="Завдання можна прив’язати до справи — тоді воно з’явиться і на сторінці справи, і в клієнта."
+              action={<CreateButton kind="task" label="Додати завдання" />}
+            />
+          )
+        }
+      />
+      <UrlPagination page={page} pageSize={pageSize} total={total} />
     </Card>
   );
 }

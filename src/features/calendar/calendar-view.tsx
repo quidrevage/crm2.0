@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Pencil } from "lucide-react";
+import { Bell, ChevronLeft, ChevronRight, Pencil, Plus } from "lucide-react";
 import { Button, IconButton } from "@/components/ui/button";
 import { Card, DetailList, EmptyState } from "@/components/ui/display";
 import { Modal } from "@/components/ui/overlay";
@@ -12,12 +12,16 @@ import {
   WEEKDAYS_SHORT, weekdayIndex, weekStart,
 } from "@/lib/dates";
 import type { CalendarEvent, EventType } from "@/types/domain";
-import { CaseLink, ClientLink, UserCell } from "../common";
+import { ArchiveButton } from "../record-actions";
+import { CaseLink, ClientLink, FilterBar, UrlSelect, UserCell, labelOptions, useUrlFilters } from "../common";
+import { editEvent } from "../form-values";
+import { useLookups } from "../lookups/context";
 import { useRecordForm } from "../quick-create";
+import { REMINDER_OPTIONS } from "../schemas";
 import { VerifiedBadge } from "./events-list";
+import type { CalendarMode } from "./range";
 
-type View = "month" | "week" | "agenda";
-const views: Array<{ id: View; label: string }> = [
+const views: Array<{ id: CalendarMode; label: string }> = [
   { id: "month", label: "Місяць" },
   { id: "week", label: "Тиждень" },
   { id: "agenda", label: "Список" },
@@ -28,7 +32,7 @@ const dot: Record<EventType, string> = {
   call: "bg-muted", internal: "bg-muted", other: "bg-muted",
 };
 
-function EventChip({ event, onOpen, showTime = true }: { event: CalendarEvent; onOpen: (e: CalendarEvent) => void; showTime?: boolean }) {
+function EventChip({ event, onOpen }: { event: CalendarEvent; onOpen: (e: CalendarEvent) => void }) {
   return (
     <button
       type="button"
@@ -37,7 +41,7 @@ function EventChip({ event, onOpen, showTime = true }: { event: CalendarEvent; o
       className="flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-left text-xs hover:bg-subtle"
     >
       <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dot[event.type])} />
-      {showTime && <span className="num shrink-0 text-muted">{formatTime(event.startsAt)}</span>}
+      <span className="num shrink-0 text-muted">{formatTime(event.startsAt)}</span>
       <span className="truncate">{event.title}</span>
     </button>
   );
@@ -58,6 +62,7 @@ function DayRows({ events, onOpen }: { events: CalendarEvent[]; onOpen: (e: Cale
                 {event.location && ` · ${event.location}`}
               </span>
             </span>
+            {event.reminder && <Bell aria-label="Є нагадування" className="mt-1 h-3.5 w-3.5 text-muted" />}
           </button>
         </li>
       ))}
@@ -65,17 +70,22 @@ function DayRows({ events, onOpen }: { events: CalendarEvent[]; onOpen: (e: Cale
   );
 }
 
-export function CalendarView({ events }: { events: CalendarEvent[] }) {
+type CalendarViewProps = { events: CalendarEvent[]; view: CalendarMode; anchor: string };
+
+export function CalendarView({ events, view, anchor }: CalendarViewProps) {
   const today = dayKey();
   const form = useRecordForm();
-  const [view, setView] = useState<View>("month");
-  const [anchor, setAnchor] = useState(today);
-  const [selected, setSelected] = useState(today);
+  const filters = useUrlFilters();
+  const { users } = useLookups();
+  const [selected, setSelected] = useState(anchor);
   const [detail, setDetail] = useState<CalendarEvent | null>(null);
 
-  // Phones start on the list view, where nothing is squeezed into a grid.
+  useEffect(() => setSelected(anchor), [anchor]);
+
+  // Phones open on the list view the first time, where nothing is squeezed into a grid.
   useEffect(() => {
-    if (window.matchMedia("(max-width: 639px)").matches) setView("agenda");
+    if (!filters.get("view") && window.matchMedia("(max-width: 639px)").matches) filters.set({ view: "agenda" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const byDay = useMemo(() => {
@@ -87,6 +97,9 @@ export function CalendarView({ events }: { events: CalendarEvent[] }) {
     return map;
   }, [events]);
 
+  // Keep an open detail in sync when the event changes (e.g. edited by the other user).
+  const current = detail ? events.find((e) => e.id === detail.id) ?? null : null;
+
   const week = Array.from({ length: 7 }, (_, i) => shiftKey(weekStart(anchor), i));
   const agendaDays = Array.from({ length: 30 }, (_, i) => shiftKey(anchor, i)).filter((key) => byDay.has(key));
 
@@ -95,16 +108,13 @@ export function CalendarView({ events }: { events: CalendarEvent[] }) {
     : view === "week" ? `${formatDate(week[0])} – ${formatDate(week[6])}`
     : `${formatDate(anchor)} – ${formatDate(shiftKey(anchor, 29))}`;
 
+  const go = (next: string) => filters.set({ d: next === today ? null : next });
   function step(direction: 1 | -1) {
-    if (view === "month") setAnchor(shiftMonth(monthStart(anchor), direction));
-    else setAnchor(shiftKey(anchor, (view === "week" ? 7 : 30) * direction));
+    if (view === "month") go(shiftMonth(monthStart(anchor), direction));
+    else go(shiftKey(anchor, (view === "week" ? 7 : 30) * direction));
   }
 
-  function goToday() {
-    setAnchor(today);
-    setSelected(today);
-  }
-
+  const newOn = (key: string) => form.open("event", { values: { date: key } });
   const selectedEvents = byDay.get(selected) ?? [];
 
   return (
@@ -118,10 +128,10 @@ export function CalendarView({ events }: { events: CalendarEvent[] }) {
             <IconButton label="Вперед" onClick={() => step(1)}>
               <ChevronRight className="h-4 w-4" />
             </IconButton>
-            <Button size="sm" onClick={goToday}>
+            <Button size="sm" onClick={() => go(today)}>
               Сьогодні
             </Button>
-            <h2 className="num ml-2 text-sm font-semibold">{title}</h2>
+            <h2 className={cn("num ml-2 text-sm font-semibold transition-opacity", filters.pending && "opacity-50")}>{title}</h2>
           </div>
           <div role="tablist" aria-label="Вигляд календаря" className="flex rounded-md border border-line-strong p-0.5">
             {views.map((v) => (
@@ -130,7 +140,7 @@ export function CalendarView({ events }: { events: CalendarEvent[] }) {
                 type="button"
                 role="tab"
                 aria-selected={view === v.id}
-                onClick={() => setView(v.id)}
+                onClick={() => filters.set({ view: v.id === "month" ? null : v.id })}
                 className={cn(
                   "h-8 rounded px-2.5 text-[13px] sm:h-7",
                   view === v.id ? "bg-accent-soft font-medium text-accent" : "text-muted hover:text-fg",
@@ -141,6 +151,10 @@ export function CalendarView({ events }: { events: CalendarEvent[] }) {
             ))}
           </div>
         </div>
+        <FilterBar>
+          <UrlSelect param="responsible" label="Відповідальний" options={users.map((u) => ({ value: u.id, label: u.fullName }))} />
+          <UrlSelect param="type" label="Тип" options={labelOptions(eventTypeLabel)} />
+        </FilterBar>
 
         {view === "month" && (
           <>
@@ -158,6 +172,7 @@ export function CalendarView({ events }: { events: CalendarEvent[] }) {
                 return (
                   <div
                     key={key}
+                    onDoubleClick={() => newOn(key)}
                     className={cn(
                       "min-h-14 border-line p-1 sm:min-h-24",
                       i % 7 !== 6 && "border-r",
@@ -201,9 +216,15 @@ export function CalendarView({ events }: { events: CalendarEvent[] }) {
               })}
             </div>
             <div className="border-t border-line">
-              <p className="px-4 pt-3 pb-1 text-[13px] font-medium">
-                {formatDate(selected)}, {WEEKDAYS_LONG[weekdayIndex(selected)]}
-              </p>
+              <div className="flex items-center justify-between px-4 pt-3 pb-1">
+                <p className="text-[13px] font-medium">
+                  {formatDate(selected)}, {WEEKDAYS_LONG[weekdayIndex(selected)]}
+                </p>
+                <Button size="sm" variant="ghost" onClick={() => newOn(selected)}>
+                  <Plus className="h-4 w-4" />
+                  Подія на цей день
+                </Button>
+              </div>
               {selectedEvents.length > 0 ? (
                 <DayRows events={selectedEvents} onOpen={setDetail} />
               ) : (
@@ -219,9 +240,14 @@ export function CalendarView({ events }: { events: CalendarEvent[] }) {
               const dayEvents = byDay.get(key) ?? [];
               return (
                 <div key={key} className="min-w-0 p-2 lg:min-h-72">
-                  <p className={cn("num mb-1 px-1 text-[13px]", key === today ? "font-semibold text-accent" : "text-muted")}>
+                  <button
+                    type="button"
+                    onClick={() => newOn(key)}
+                    title="Додати подію на цей день"
+                    className={cn("num mb-1 rounded px-1 text-[13px] hover:bg-subtle", key === today ? "font-semibold text-accent" : "text-muted")}
+                  >
                     {WEEKDAYS_SHORT[weekdayIndex(key)]}, {key.slice(8)}.{key.slice(5, 7)}
-                  </p>
+                  </button>
                   {dayEvents.length === 0 ? (
                     <p className="px-1 text-xs text-muted/70">—</p>
                   ) : (
@@ -262,43 +288,50 @@ export function CalendarView({ events }: { events: CalendarEvent[] }) {
           ))}
       </Card>
 
-      <Modal open={detail !== null} onOpenChange={(open) => !open && setDetail(null)} title={detail?.title ?? ""}>
-        {detail && (
+      <Modal open={current !== null} onOpenChange={(open) => !open && setDetail(null)} title={current?.title ?? ""}>
+        {current && (
           <>
             <DetailList
               items={[
-                { label: "Тип", value: <span className="flex flex-wrap items-center gap-2">{eventTypeLabel[detail.type]} <VerifiedBadge event={detail} /></span> },
+                { label: "Тип", value: <span className="flex flex-wrap items-center gap-2">{eventTypeLabel[current.type]} <VerifiedBadge event={current} /></span> },
                 {
                   label: "Дата і час",
                   value: (
                     <span className="num">
-                      {formatDate(detail.startsAt)}, {formatTime(detail.startsAt)}
-                      {detail.endsAt && `–${formatTime(detail.endsAt)}`}
+                      {formatDate(current.startsAt)}, {formatTime(current.startsAt)}
+                      {current.endsAt && `–${formatTime(current.endsAt)}`}
                     </span>
                   ),
                 },
-                { label: "Місце", value: detail.location },
-                { label: "Відповідальний", value: <UserCell id={detail.responsibleId} /> },
-                { label: "Клієнт", value: <ClientLink id={detail.clientId} /> },
-                { label: "Справа", value: <CaseLink id={detail.caseId} /> },
-                ...(detail.type === "deadline" ? [{ label: "Підстава строку", value: detail.deadlineSource }] : []),
-                { label: "Опис", value: detail.description },
+                { label: "Місце", value: current.location },
+                { label: "Відповідальний", value: <UserCell id={current.responsibleId} /> },
+                { label: "Клієнт", value: <ClientLink id={current.clientId} /> },
+                { label: "Справа", value: <CaseLink id={current.caseId} /> },
+                ...(current.type === "deadline"
+                  ? [
+                      { label: "Підстава строку", value: current.deadlineSource },
+                      { label: "Перевірив", value: current.isVerified ? <UserCell id={current.verifiedBy} /> : "Ще не перевірено" },
+                    ]
+                  : []),
+                { label: "Нагадування", value: REMINDER_OPTIONS.find((o) => o.value === current.reminder)?.label },
+                { label: "Опис", value: current.description },
               ]}
             />
-            <div className="mt-4 flex justify-end border-t border-line pt-3">
+            <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-line pt-3">
+              <ArchiveButton
+                table="events"
+                id={current.id}
+                archivedAt={current.archivedAt}
+                confirmTitle="Прибрати подію з календаря?"
+                confirmMessage="Подія зникне з календаря, але залишиться в історії дій."
+                size="sm"
+              />
               <Button
+                size="sm"
                 onClick={() => {
-                  const event = detail;
+                  const event = current;
                   setDetail(null);
-                  form.open("event", {
-                    isEdit: true,
-                    defaults: {
-                      title: event.title, type: event.type, date: dayKey(event.startsAt), startTime: formatTime(event.startsAt),
-                      endTime: event.endsAt ? formatTime(event.endsAt) : "", location: event.location, caseId: event.caseId ?? "",
-                      clientId: event.clientId ?? "", responsibleId: event.responsibleId, description: event.description,
-                      deadlineSource: event.deadlineSource ?? "", isVerified: event.isVerified ?? false,
-                    },
-                  });
+                  form.open("event", editEvent(event, event.reminder));
                 }}
               >
                 <Pencil className="h-4 w-4" />

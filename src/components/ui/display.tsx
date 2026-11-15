@@ -156,11 +156,11 @@ export function DetailList({ items, columns = 2 }: { items: Detail[]; columns?: 
   );
 }
 
-export function Stat({ label, value, href, tone }: { label: string; value: ReactNode; href?: string; tone?: "danger" }) {
+export function Stat({ label, value, href, tone }: { label: string; value: ReactNode; href?: string; tone?: "danger" | "warning" }) {
   const body = (
     <>
       <span className="text-[13px] text-muted">{label}</span>
-      <span className={cn("num mt-1 block text-2xl leading-none font-semibold", tone === "danger" && "text-danger")}>
+      <span className={cn("num mt-1 block text-2xl leading-none font-semibold", tone === "danger" && "text-danger", tone === "warning" && "text-warning")}>
         {value}
       </span>
     </>

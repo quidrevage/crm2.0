@@ -7,6 +7,7 @@ import {
   StickyNote, Users, Wallet, type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { useLookups } from "@/features/lookups/context";
 
 type NavItem = { href: string; label: string; icon: LucideIcon };
 
@@ -44,6 +45,8 @@ export function Logo({ compact }: { compact?: boolean }) {
 
 export function SidebarNav({ collapsed, onNavigate }: { collapsed?: boolean; onNavigate?: () => void }) {
   const pathname = usePathname();
+  const { canReadFinance } = useLookups();
+  const items = canReadFinance ? main : main.filter((item) => item.href !== "/finance");
 
   const renderItem = (item: NavItem) => {
     const active = isActive(pathname, item.href);
@@ -69,7 +72,7 @@ export function SidebarNav({ collapsed, onNavigate }: { collapsed?: boolean; onN
 
   return (
     <nav aria-label="Основна навігація" className="flex flex-1 flex-col gap-4 p-2">
-      <ul className="space-y-0.5">{main.map(renderItem)}</ul>
+      <ul className="space-y-0.5">{items.map(renderItem)}</ul>
       <ul className="mt-auto space-y-0.5 border-t border-line pt-2">{admin.map(renderItem)}</ul>
     </nav>
   );

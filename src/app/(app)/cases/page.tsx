@@ -2,15 +2,16 @@ import type { Metadata } from "next";
 import { PageHeader } from "@/components/ui/display";
 import { CasesList } from "@/features/cases/cases";
 import { CreateButton } from "@/features/record-actions";
-import { cases } from "@/mocks/data";
+import { PAGE_SIZE, listCases, type SearchParams } from "@/lib/data/queries";
 
 export const metadata: Metadata = { title: "Справи" };
 
-export default function CasesPage() {
+export default async function CasesPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+  const { rows, total, page } = await listCases(await searchParams);
   return (
     <>
-      <PageHeader title="Справи" actions={<CreateButton kind="case" label="Створити справу" />} />
-      <CasesList rows={cases} />
+      <PageHeader title="Справи" meta={<span className="num">Знайдено: {total}</span>} actions={<CreateButton kind="case" label="Створити справу" />} />
+      <CasesList rows={rows} total={total} page={page} pageSize={PAGE_SIZE} />
     </>
   );
 }

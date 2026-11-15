@@ -1,15 +1,16 @@
 import "server-only";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import type { Database } from "@/types/database";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./env";
 
 /**
- * Supabase client acting as the signed-in user (session from httpOnly cookies).
+ * Supabase client acting as the signed-in user (session from cookies).
  * Every query through it is subject to row-level security.
  */
 export async function createClient() {
   const cookieStore = await cookies();
-  return createServerClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+  return createServerClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
     cookies: {
       getAll: () => cookieStore.getAll(),
       setAll(list) {
@@ -22,3 +23,5 @@ export async function createClient() {
     },
   });
 }
+
+export type ServerClient = Awaited<ReturnType<typeof createClient>>;

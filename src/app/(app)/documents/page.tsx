@@ -3,12 +3,12 @@ import { FileUp } from "lucide-react";
 import { PageHeader } from "@/components/ui/display";
 import { DocumentsList } from "@/features/documents/documents";
 import { CreateButton } from "@/features/record-actions";
-import { documents } from "@/mocks/data";
+import { PAGE_SIZE, listDocuments, type SearchParams } from "@/lib/data/queries";
 
 export const metadata: Metadata = { title: "Документи" };
 
-export default async function DocumentsPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
-  const { q } = await searchParams;
+export default async function DocumentsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+  const { rows, total, page } = await listDocuments(await searchParams);
   return (
     <>
       <PageHeader
@@ -16,7 +16,7 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
         meta="Пошук працює за назвою та описом документа, а не за вмістом файлів."
         actions={<CreateButton kind="document" label="Завантажити документ" icon={<FileUp className="h-4 w-4" />} />}
       />
-      <DocumentsList key={q} rows={documents} initialQuery={q} />
+      <DocumentsList rows={rows} total={total} page={page} pageSize={PAGE_SIZE} />
     </>
   );
 }

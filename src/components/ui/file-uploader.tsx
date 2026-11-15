@@ -3,29 +3,20 @@
 import { useRef, useState } from "react";
 import { FileText, Upload, X } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { MAX_FILE_MB, validateFile } from "@/lib/files";
 import { formatFileSize } from "@/lib/format";
 
-export const ALLOWED_EXTENSIONS = ["pdf", "docx", "xlsx", "jpg", "jpeg", "png"];
-export const MAX_FILE_MB = 25;
+type FileUploaderProps = { file: File | null; onChange: (file: File | null) => void; error?: string; maxMb?: number };
 
-export function validateFile(file: File): string | null {
-  const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
-  if (!ALLOWED_EXTENSIONS.includes(ext)) return "Непідтримуваний формат. Дозволено: PDF, DOCX, XLSX, JPG, PNG.";
-  if (file.size > MAX_FILE_MB * 1024 * 1024) return `Файл завеликий. Максимальний розмір — ${MAX_FILE_MB} МБ.`;
-  if (file.size === 0) return "Файл порожній.";
-  return null;
-}
-
-type FileUploaderProps = { file: File | null; onChange: (file: File | null) => void; error?: string };
-
-export function FileUploader({ file, onChange, error }: FileUploaderProps) {
+/** File picker with drag-and-drop. On iPhone it offers camera, photo library and Files. */
+export function FileUploader({ file, onChange, error, maxMb = MAX_FILE_MB }: FileUploaderProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
 
   function pick(candidate: File | undefined) {
     if (!candidate) return;
-    const problem = validateFile(candidate);
+    const problem = validateFile(candidate, maxMb);
     setLocalError(problem);
     onChange(problem ? null : candidate);
   }
@@ -72,7 +63,7 @@ export function FileUploader({ file, onChange, error }: FileUploaderProps) {
         >
           <Upload className="h-5 w-5 text-muted" />
           <span className="text-sm font-medium">Оберіть файл або перетягніть його сюди</span>
-          <span className="text-xs text-muted">PDF, DOCX, XLSX, JPG, PNG · до {MAX_FILE_MB} МБ</span>
+          <span className="text-xs text-muted">PDF, DOCX, XLSX, JPG, PNG · до {maxMb} МБ</span>
         </button>
       )}
       <input
@@ -80,7 +71,7 @@ export function FileUploader({ file, onChange, error }: FileUploaderProps) {
         type="file"
         className="sr-only"
         tabIndex={-1}
-        accept=".pdf,.docx,.xlsx,.jpg,.jpeg,.png"
+        accept=".pdf,.docx,.xlsx,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
         onChange={(e) => {
           pick(e.target.files?.[0]);
           e.target.value = "";

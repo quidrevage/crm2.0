@@ -1,14 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
 import { Users } from "lucide-react";
 import { Badge, Card, EmptyState } from "@/components/ui/display";
-import { DataTable, Pagination, usePagination, type Column } from "@/components/ui/data-table";
-import { SearchInput } from "@/components/ui/form";
+import { DataTable, type Column } from "@/components/ui/data-table";
 import { clientStatusLabel, clientStatusTone, clientTypeLabel } from "@/i18n/uk";
 import { formatDate } from "@/lib/dates";
 import type { Client } from "@/types/domain";
-import { FilterBar, FilterSelect, UserCell, labelOptions } from "../common";
+import { ArchiveToggle, FilterBar, UrlPagination, UrlSearch, UrlSelect, UserCell, labelOptions, useUrlFilters } from "../common";
+import { useLookups } from "../lookups/context";
+import { CreateButton } from "../record-actions";
 
 const columns: Column<Client>[] = [
   { key: "number", header: "№", cell: (c) => <span className="num text-muted">{c.number}</span>, className: "w-20" },
@@ -20,50 +20,41 @@ const columns: Column<Client>[] = [
   { key: "updated", header: "Оновлено", cell: (c) => <span className="num text-muted">{formatDate(c.updatedAt)}</span>, mobile: "hidden" },
 ];
 
-export function ClientsList({ rows }: { rows: Client[] }) {
-  const [query, setQuery] = useState("");
-  const [type, setType] = useState("");
-  const [status, setStatus] = useState("");
+type Props = { rows: Client[]; total: number; page: number; pageSize: number };
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return rows.filter(
-      (c) =>
-        (!type || c.type === type) &&
-        (!status || c.status === status) &&
-        (!q || [c.name, c.number, c.edrpou, c.rnokpp, c.phone, c.email].some((f) => f?.toLowerCase().includes(q))),
-    );
-  }, [rows, query, type, status]);
-
-  const paging = usePagination(filtered);
+export function ClientsList({ rows, total, page, pageSize }: Props) {
+  const { users } = useLookups();
+  const filters = useUrlFilters();
+  const filtered = ["q", "type", "status", "assigned", "archived"].some((k) => filters.get(k));
 
   return (
     <Card flush>
-      <FilterBar>
-        <SearchInput
-          className="w-full sm:w-72"
-          placeholder="Назва, код, телефон…"
-          aria-label="Пошук клієнтів"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-        <FilterSelect label="Тип" value={type} onChange={setType} options={labelOptions(clientTypeLabel)} />
-        <FilterSelect label="Статус" value={status} onChange={setStatus} options={labelOptions(clientStatusLabel)} />
+      <FilterBar pending={filters.pending}>
+        <UrlSearch placeholder="Назва, код, телефон…" label="Пошук клієнтів" />
+        <UrlSelect param="type" label="Тип" options={labelOptions(clientTypeLabel)} />
+        <UrlSelect param="status" label="Статус" options={labelOptions(clientStatusLabel)} />
+        <UrlSelect param="assigned" label="Відповідальний" options={users.map((u) => ({ value: u.id, label: u.fullName }))} />
+        <ArchiveToggle />
       </FilterBar>
       <DataTable
         columns={columns}
-        rows={paging.pageRows}
+        rows={rows}
         rowKey={(c) => c.id}
         rowHref={(c) => `/clients/${c.id}`}
         empty={
-          <EmptyState
-            icon={<Users className="h-6 w-6" />}
-            title="Клієнтів не знайдено"
-            hint="Змініть умови пошуку або скиньте фільтри."
-          />
+          filtered ? (
+            <EmptyState icon={<Users className="h-6 w-6" />} title="Клієнтів не знайдено" hint="Змініть умови пошуку або скиньте фільтри." />
+          ) : (
+            <EmptyState
+              icon={<Users className="h-6 w-6" />}
+              title="Клієнтів ще немає"
+              hint="Додайте першого клієнта — фізичну або юридичну особу."
+              action={<CreateButton kind="client" label="Додати клієнта" />}
+            />
+          )
         }
       />
-      <Pagination page={paging.page} pageCount={paging.pageCount} total={paging.total} pageSize={paging.pageSize} onChange={paging.setPage} />
+      <UrlPagination page={page} pageSize={pageSize} total={total} />
     </Card>
   );
 }
