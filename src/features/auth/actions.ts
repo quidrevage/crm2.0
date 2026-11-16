@@ -158,6 +158,66 @@ export async function inviteUser(_prev: FormState, formData: FormData): Promise<
   return { success: `Запрошення надіслано на ${parsed.data.email}.` };
 }
 
+/**
+ * Adds a person straight away with an e-mail and a password chosen by the administrator
+ * (no e-mail is sent). The same database rules apply as for an invitation: only an administrator,
+ * only while a seat is free. The account is created only after the database has accepted it.
+ */
+export async function addUserWithPassword(_prev: FormState, formData: FormData): Promise<FormState> {
+  const user = await requireUser();
+  if (user.role !== "admin") return { error: "Додавати користувачів може лише адміністратор." };
+
+  const parsed = z
+    .object({
+      email,
+      fullName: z.string().trim().min(2, "Вкажіть ім’я та прізвище.").max(120),
+      role: z.enum(["member", "admin"]).default("member"),
+      password: z.string().min(MIN_PASSWORD, `Пароль має містити щонайменше ${MIN_PASSWORD} символів.`).max(72),
+    })
+    .safeParse({
+      email: formData.get("email"),
+      fullName: formData.get("fullName"),
+      role: formData.get("role") ?? undefined,
+      password: formData.get("password"),
+    });
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+
+  // Step 1 — as the signed-in user, so the database checks "is admin" and "is there a free seat".
+  const supabase = await createClient();
+  const { data: invitation, error: inviteError } = await supabase
+    .from("user_invitations")
+    .insert({ email: parsed.data.email, full_name: parsed.data.fullName, role: parsed.data.role })
+    .select("id")
+    .single();
+  if (inviteError) {
+    if (inviteError.code === "23505") return { error: "На цю адресу вже є запрошення. Скасуйте його нижче і спробуйте знову." };
+    return { error: dbMessages[inviteError.message] ?? "Не вдалося додати користувача." };
+  }
+  const { data: accepted } = await supabase.from("user_invitations").select("accepted_at").eq("id", invitation.id).maybeSingle();
+  if (accepted?.accepted_at) {
+    revalidatePath("/", "layout");
+    return { success: `${parsed.data.email} уже мав обліковий запис — додано до робочого простору з його старим паролем.` };
+  }
+
+  // Step 2 — create the account on the server; the database trigger adds it to the workspace.
+  const admin = createAdminClient();
+  const { error: createError } = await admin.auth.admin.createUser({
+    email: parsed.data.email,
+    password: parsed.data.password,
+    email_confirm: true,
+    user_metadata: { full_name: parsed.data.fullName },
+  });
+  if (createError) {
+    await supabase.from("user_invitations").delete().eq("id", invitation.id);
+    if (/password/i.test(createError.message)) return { error: "Пароль занадто простий. Оберіть довший або складніший пароль." };
+    if (/already|registered|exists/i.test(createError.message)) return { error: "Користувач з такою адресою вже існує." };
+    return { error: "Не вдалося створити обліковий запис. Спробуйте ще раз." };
+  }
+
+  revalidatePath("/", "layout");
+  return { success: `Користувача ${parsed.data.fullName} додано. Передайте йому email і пароль для входу.` };
+}
+
 export async function cancelInvitation(formData: FormData) {
   await requireUser();
   const id = z.uuid().safeParse(formData.get("id"));

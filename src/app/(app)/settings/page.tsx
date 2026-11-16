@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card, DetailList, PageHeader } from "@/components/ui/display";
 import { Tabs } from "@/components/ui/tabs";
 import { cancelInvitation } from "@/features/auth/actions";
-import { InviteForm, ProfileForm } from "@/features/auth/forms";
+import { AddUserForm, InviteForm, ProfileForm } from "@/features/auth/forms";
 import { FinanceAccessPanel, ReferenceLists, UsersPanel } from "@/features/settings/settings-panels";
 import { WorkspacePanel } from "@/features/workspaces/workspace-ui";
 import { roleLabel } from "@/i18n/uk";
@@ -105,8 +105,13 @@ export default async function SettingsPage({ searchParams }: Props) {
                       </ul>
                     </Card>
                   )}
+                  {isAdmin && seatFree && (
+                    <Card title="Додати користувача">
+                      <AddUserForm />
+                    </Card>
+                  )}
                   {isAdmin && (
-                    <Card title="Запросити до робочого простору">
+                    <Card title="Або запросити поштою">
                       {seatFree ? (
                         <InviteForm />
                       ) : (

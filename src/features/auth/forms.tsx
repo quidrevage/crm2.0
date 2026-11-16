@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useActionState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox, Field, Input, Select } from "@/components/ui/form";
-import { inviteUser, requestPasswordReset, setPassword, signIn, updateProfile, type FormState } from "./actions";
+import { addUserWithPassword, inviteUser, requestPasswordReset, setPassword, signIn, updateProfile, type FormState } from "./actions";
 
 function Message({ state }: { state: FormState }) {
   if (state?.error) {
@@ -133,6 +133,35 @@ export function InviteForm() {
         <Message state={state} />
         <Button type="submit" variant="primary" disabled={pending}>
           {pending ? "Надсилання…" : "Надіслати запрошення"}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+export function AddUserForm() {
+  const [state, action, pending] = useActionState(addUserWithPassword, undefined);
+  return (
+    <form action={action} className="grid gap-3 sm:grid-cols-2" autoComplete="off">
+      <Field label="Ім’я та прізвище" required>
+        <Input name="fullName" autoComplete="off" required />
+      </Field>
+      <Field label="Електронна пошта" required>
+        <Input type="email" name="email" autoComplete="off" required />
+      </Field>
+      <Field label="Пароль" required hint="Щонайменше 10 символів. Користувач зможе змінити його через «Забули пароль?».">
+        <Input type="text" name="password" autoComplete="new-password" required minLength={10} />
+      </Field>
+      <Field label="Роль">
+        <Select name="role" defaultValue="member">
+          <option value="member">Учасник</option>
+          <option value="admin">Адміністратор</option>
+        </Select>
+      </Field>
+      <div className="space-y-3 sm:col-span-2">
+        <Message state={state} />
+        <Button type="submit" variant="primary" disabled={pending}>
+          {pending ? "Додавання…" : "Додати користувача"}
         </Button>
       </div>
     </form>
