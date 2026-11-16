@@ -1,3 +1,4 @@
+import { ExportButton } from "@/features/export-button";
 import type { Metadata } from "next";
 import { PageHeader } from "@/components/ui/display";
 import { ClientsList } from "@/features/clients/clients-list";
@@ -10,7 +11,7 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
   const { rows, total, page } = await listClients(await searchParams);
   return (
     <>
-      <PageHeader title="Клієнти" meta={<span className="num">Усього: {total}</span>} actions={<CreateButton kind="client" label="Додати клієнта" />} />
+      <PageHeader title="Клієнти" meta={<span className="num">Усього: {total}</span>} actions={<><ExportButton kind="clients" /><CreateButton kind="client" label="Додати клієнта" /></>} />
       <ClientsList rows={rows} total={total} page={page} pageSize={PAGE_SIZE} />
     </>
   );

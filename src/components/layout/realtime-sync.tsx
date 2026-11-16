@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { startTransition, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getBrowserClient } from "@/lib/supabase/browser";
 import { cn } from "@/lib/cn";
 
 const TABLES = [
   "clients", "client_contacts", "cases", "case_parties", "courts", "documents", "document_versions", "tasks", "events",
-  "event_reminders", "fee_agreements", "payments", "expenses", "notes", "profiles", "app_settings",
+  "event_reminders", "fee_agreements", "payments", "expenses", "notes", "profiles", "workspaces", "workspace_members",
 ] as const;
 
 type Status = "connecting" | "live" | "offline";
@@ -25,10 +25,25 @@ export function useRealtimeSync(): Status {
 
   useEffect(() => {
     const supabase = getBrowserClient();
+    // A refresh is deferred while the tab is hidden and runs once when it becomes visible again,
+    // and always as a transition so it never interrupts a navigation that is still loading.
+    let stale = false;
+    const run = () => {
+      if (document.visibilityState === "hidden") {
+        stale = true;
+        return;
+      }
+      stale = false;
+      startTransition(() => router.refresh());
+    };
     const refresh = () => {
       window.clearTimeout(timer.current);
-      timer.current = window.setTimeout(() => router.refresh(), 600);
+      timer.current = window.setTimeout(run, 600);
     };
+    const onVisible = () => {
+      if (stale && document.visibilityState === "visible") run();
+    };
+    document.addEventListener("visibilitychange", onVisible);
 
     let channel = supabase.channel("shared-records");
     for (const table of TABLES) {
@@ -52,6 +67,7 @@ export function useRealtimeSync(): Status {
     return () => {
       window.clearTimeout(timer.current);
       window.removeEventListener("online", onOnline);
+      document.removeEventListener("visibilitychange", onVisible);
       void supabase.removeChannel(channel);
     };
   }, [router]);

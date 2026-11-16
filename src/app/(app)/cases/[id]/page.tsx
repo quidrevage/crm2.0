@@ -4,6 +4,7 @@ import { Tabs } from "@/components/ui/tabs";
 import { EventsList } from "@/features/calendar/events-list";
 import { PartiesList } from "@/features/cases/cases";
 import { CaseStatusBadge, ClientLink, RefName, UserCell } from "@/features/common";
+import { CourtCard } from "@/features/courts/court-card";
 import { DocumentsTable } from "@/features/documents/documents";
 import { ExpensesTable, FeesTable, PaymentsTable } from "@/features/finance/finance";
 import { editCase } from "@/features/form-values";
@@ -27,7 +28,7 @@ export async function generateMetadata({ params }: Props) {
 export default async function CasePage({ params }: Props) {
   const { id } = await params;
   const [data, lookups] = await Promise.all([getCasePage(id), getLookups()]);
-  const { legalCase, parties, documents, tasks, events, notes, activity, finance } = data;
+  const { legalCase, parties, documents, tasks, events, notes, activity, finance, court: courtDetails } = data;
   const canReadFinance = lookups.me.finance !== "none";
   const canWriteFinance = lookups.me.finance === "write";
   const court = lookups.courts.find((c) => c.id === legalCase.courtId);
@@ -99,6 +100,7 @@ export default async function CasePage({ params }: Props) {
                     <p className="mt-4 max-w-[75ch] border-t border-line pt-3 text-sm whitespace-pre-line">{legalCase.description}</p>
                   )}
                 </Card>
+                <div className="space-y-4">
                 <Card title="Що далі" flush>
                   <dl className="grid grid-cols-2 gap-3 border-b border-line px-4 py-3">
                     <div>
@@ -112,6 +114,8 @@ export default async function CasePage({ params }: Props) {
                   </dl>
                   <EventsList rows={upcoming.slice(0, 4)} showCase={false} emptyTitle="Майбутніх подій немає" />
                 </Card>
+                {legalCase.isLitigation && courtDetails && <CourtCard court={courtDetails} courtCaseNumber={legalCase.courtCaseNumber} />}
+                </div>
               </div>
             ),
           },

@@ -7,6 +7,7 @@ import { Avatar, Badge, Card } from "@/components/ui/display";
 import { Input, Select } from "@/components/ui/form";
 import { roleLabel } from "@/i18n/uk";
 import { cn } from "@/lib/cn";
+import { nameFromEmail } from "@/lib/format";
 import type { CaseStatusItem, FinanceAccess, RefItem, Role } from "@/types/domain";
 import { useLookups } from "../lookups/context";
 import { useRunAction } from "../record-actions";
@@ -20,16 +21,16 @@ export function UsersPanel({ users, maxUsers }: { users: ProfileRow[]; maxUsers:
   const activeCount = users.filter((u) => u.is_active).length;
 
   return (
-    <Card title={`Активні користувачі: ${activeCount} з ${maxUsers}`} flush>
+    <Card title={`Активні учасники: ${activeCount} з ${maxUsers}`} flush>
       <ul className="divide-y divide-line">
         {users.map((u) => {
           const self = u.id === me.id;
           return (
             <li key={u.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
-              <Avatar name={u.full_name || u.email} className="h-8 w-8 text-xs" />
+              <Avatar name={u.full_name || nameFromEmail(u.email)} className="h-8 w-8 text-xs" />
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium">
-                  {u.full_name || "Ім’я не вказано"}
+                  {u.full_name || nameFromEmail(u.email)}
                   {self && <span className="font-normal text-muted"> (ви)</span>}
                 </p>
                 <p className="truncate text-[13px] text-muted">{u.email}</p>
@@ -69,7 +70,7 @@ export function UsersPanel({ users, maxUsers }: { users: ProfileRow[]; maxUsers:
       </ul>
       {isAdmin && (
         <p className="border-t border-line px-4 py-3 text-[13px] text-muted">
-          Вимкнений користувач одразу втрачає доступ до всіх даних, а його місце звільняється для запрошення.
+          Вимкнений учасник одразу втрачає доступ до даних цього робочого простору, а його місце звільняється для запрошення.
         </p>
       )}
     </Card>
@@ -199,13 +200,12 @@ function AddRef({ table }: { table: RefTable }) {
   );
 }
 
-const refLists: Array<{ table: RefTable; key: "practiceAreas" | "matterTypes" | "caseStatuses" | "partyRoles" | "documentCategories" | "courtTypes"; title: string }> = [
+const refLists: Array<{ table: RefTable; key: "practiceAreas" | "matterTypes" | "caseStatuses" | "partyRoles" | "documentCategories"; title: string }> = [
   { table: "practice_areas", key: "practiceAreas", title: "Галузі права" },
   { table: "matter_types", key: "matterTypes", title: "Типи справ" },
   { table: "case_statuses", key: "caseStatuses", title: "Статуси справ" },
   { table: "party_roles", key: "partyRoles", title: "Процесуальні статуси учасників" },
   { table: "document_categories", key: "documentCategories", title: "Категорії документів" },
-  { table: "court_types", key: "courtTypes", title: "Типи судів" },
 ];
 
 export function ReferenceLists() {

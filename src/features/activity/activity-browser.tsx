@@ -21,7 +21,8 @@ const entityOptions = [
   { value: "courts", label: "Суди" },
   { value: "profiles", label: "Користувачі" },
   { value: "user_invitations", label: "Запрошення" },
-  { value: "app_settings", label: "Налаштування" },
+  { value: "workspaces", label: "Робочий простір" },
+  { value: "workspace_members", label: "Учасники" },
 ];
 
 export function ActivityBrowser({ rows, total, page, pageSize }: { rows: ActivityEntry[]; total: number; page: number; pageSize: number }) {

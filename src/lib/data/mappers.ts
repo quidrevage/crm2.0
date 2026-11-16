@@ -36,6 +36,7 @@ export const toParty = (r: Tables<"case_parties">): CaseParty => ({
 export const toCourt = (r: Tables<"courts">): Court => ({
   id: r.id, name: r.name, typeId: s(r.court_type_id), region: s(r.region), city: s(r.city), address: s(r.address),
   phone: s(r.phone), email: s(r.email), website: s(r.website), notes: s(r.notes), rowVersion: r.row_version,
+  official: r.workspace_id === null, code: s(r.code), workingHours: s(r.working_hours),
 });
 
 export const toVersion = (r: Tables<"document_versions">): DocumentVersion => ({

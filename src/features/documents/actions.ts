@@ -39,7 +39,7 @@ const uploadInput = z.object({
  * then records it. A file that fails any check is removed again.
  */
 export async function finalizeUpload(input: z.infer<typeof uploadInput>): Promise<ActionResult> {
-  await requireUser();
+  const user = await requireUser();
   const parsed = uploadInput.safeParse(input);
   if (!parsed.success) return parsed.error.issues.some((i) => i.path[0] === "meta") ? invalid(parsed.error) : fail("Некоректний запит.");
   const { documentId, storagePath, fileName, meta } = parsed.data;
@@ -54,14 +54,13 @@ export async function finalizeUpload(input: z.infer<typeof uploadInput>): Promis
   const ext = extensionOf(fileName);
   if (!ext) return discard("Непідтримуваний формат. Дозволено: PDF, DOCX, XLSX, JPG, PNG.");
 
-  const { data: settings } = await supabase.from("app_settings").select("max_upload_mb").single();
   const { data: blob, error: downloadError } = await supabase.storage.from(BUCKET).download(storagePath);
   if (downloadError || !blob) return discard("Файл не отримано сховищем. Спробуйте завантажити ще раз.");
 
   const bytes = new Uint8Array(await blob.arrayBuffer());
-  const maxBytes = (settings?.max_upload_mb ?? 25) * 1024 * 1024;
+  const maxBytes = user.workspace.maxUploadMb * 1024 * 1024;
   if (bytes.byteLength === 0) return discard("Файл порожній.");
-  if (bytes.byteLength > maxBytes) return discard(`Файл завеликий. Максимальний розмір — ${settings?.max_upload_mb ?? 25} МБ.`);
+  if (bytes.byteLength > maxBytes) return discard(`Файл завеликий. Максимальний розмір — ${user.workspace.maxUploadMb} МБ.`);
   if (!contentMatchesExtension(bytes, ext)) {
     return discard("Вміст файлу не відповідає його розширенню. Перевірте, що це справжній файл PDF, DOCX, XLSX, JPG або PNG.");
   }

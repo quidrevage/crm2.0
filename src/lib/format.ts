@@ -25,3 +25,10 @@ export function initials(fullName: string): string {
 export function parseMoney(text: string): number {
   return Number(text.replace(",", "."));
 }
+
+/** "olena.koval@firm.ua" → "Olena Koval": shown only until the person enters their real name. */
+export function nameFromEmail(email: string) {
+  const local = email.split("@")[0] ?? email;
+  const words = local.split(/[._\-+]+/).filter(Boolean);
+  return words.length ? words.map((w) => w[0].toUpperCase() + w.slice(1)).join(" ") : email;
+}

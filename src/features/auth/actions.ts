@@ -30,11 +30,11 @@ export async function signIn(_prev: FormState, formData: FormData): Promise<Form
     // One message for every failure, so the form does not reveal which accounts exist.
     return { error: "Неправильна електронна пошта або пароль." };
   }
-  // Row-level security hides the profile of a deactivated account, even from its owner.
-  const { data: profile } = await supabase.from("profiles").select("id").eq("id", data.user.id).maybeSingle();
-  if (!profile) {
+  // Access exists only through an active membership in at least one workspace.
+  const { data: memberships } = await supabase.from("workspace_members").select("workspace_id").eq("user_id", data.user.id).eq("is_active", true).limit(1);
+  if (!memberships?.length) {
     await supabase.auth.signOut();
-    return { error: "Обліковий запис деактивовано. Зверніться до адміністратора." };
+    return { error: "Доступ до робочих просторів вимкнено. Зверніться до адміністратора." };
   }
   redirect("/");
 }
@@ -105,7 +105,8 @@ export async function updateProfile(_prev: FormState, formData: FormData): Promi
 }
 
 const dbMessages: Record<string, string> = {
-  USER_LIMIT_REACHED: "Досягнуто ліміту користувачів. Спершу деактивуйте наявний обліковий запис.",
+  USER_LIMIT_REACHED: "Усі місця в робочому просторі зайнято. Спершу вимкніть доступ іншому учаснику.",
+  ALREADY_MEMBER: "Ця людина вже є учасником робочого простору.",
   ADMIN_REQUIRED: "Запрошувати користувачів може лише адміністратор.",
 };
 
@@ -119,6 +120,7 @@ export async function inviteUser(_prev: FormState, formData: FormData): Promise<
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
   // Step 1 — as the signed-in user: the database itself checks "is admin" and "is there a free seat".
+  // Someone who already has an account is added to the workspace right here by the database.
   const supabase = await createClient();
   const { data: invitation, error: inviteError } = await supabase
     .from("user_invitations")
@@ -128,6 +130,12 @@ export async function inviteUser(_prev: FormState, formData: FormData): Promise<
   if (inviteError) {
     if (inviteError.code === "23505") return { error: "Цю адресу вже запрошено." };
     return { error: dbMessages[inviteError.message] ?? "Не вдалося створити запрошення." };
+  }
+  // The database accepts it in an after-insert trigger, so read the row back.
+  const { data: accepted } = await supabase.from("user_invitations").select("accepted_at").eq("id", invitation.id).maybeSingle();
+  if (accepted?.accepted_at) {
+    revalidatePath("/", "layout");
+    return { success: `${parsed.data.email} уже має обліковий запис — додано до робочого простору.` };
   }
 
   // Step 2 — only now the secret key is used, to have Supabase Auth send the e-mail.

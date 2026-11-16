@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox, Field, Input } from "@/components/ui/form";
 import { inviteUser, requestPasswordReset, setPassword, signIn, updateProfile, type FormState } from "./actions";
@@ -86,10 +86,13 @@ export function SetPasswordForm() {
   );
 }
 
-type ProfileFormProps = { fullName: string; isAdvocate: boolean; certificateNo: string };
+type ProfileFormProps = { fullName: string; isAdvocate: boolean; certificateNo: string; onSaved?: () => void };
 
-export function ProfileForm({ fullName, isAdvocate, certificateNo }: ProfileFormProps) {
+export function ProfileForm({ fullName, isAdvocate, certificateNo, onSaved }: ProfileFormProps) {
   const [state, action, pending] = useActionState(updateProfile, undefined);
+  useEffect(() => {
+    if (state?.success) onSaved?.();
+  }, [state, onSaved]);
   return (
     <form action={action} className="max-w-md space-y-3">
       <Field label="Ім’я та прізвище" required>

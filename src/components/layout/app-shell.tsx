@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   Briefcase, CalendarPlus, FileUp, ListPlus, LogOut, PanelLeftClose, PanelLeftOpen, Plus, UserPlus, UserRound,
 } from "lucide-react";
@@ -12,7 +12,9 @@ import { RecordFormProvider, useRecordForm } from "@/features/quick-create";
 import { Button, IconButton } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/display";
 import { Dropdown } from "@/components/ui/dropdown";
-import { Drawer } from "@/components/ui/overlay";
+import { Drawer, Modal } from "@/components/ui/overlay";
+import { ProfileForm } from "@/features/auth/forms";
+import { WorkspaceSwitcher, type WorkspaceOption } from "@/features/workspaces/workspace-ui";
 import { ToastProvider } from "@/components/ui/toast";
 import { GlobalSearch } from "./global-search";
 import { SyncIndicator, useRealtimeSync } from "./realtime-sync";
@@ -20,7 +22,51 @@ import { LookupsProvider } from "@/features/lookups/context";
 import type { Lookups } from "@/features/lookups/queries";
 import { Logo, MobileBar, SidebarNav } from "./nav";
 
-export type ShellUser = { displayName: string; role: Role };
+export type ShellUser = {
+  displayName: string;
+  role: Role;
+  /** The person has not entered their name yet: ask once, so colleagues see a name rather than an e-mail. */
+  needsName: boolean;
+  workspace: { id: string; name: string };
+  workspaces: WorkspaceOption[];
+};
+
+const NAME_PROMPT_KEY = "legaldesk:name-prompt-dismissed";
+
+function NamePrompt() {
+  // Once dismissed, the prompt stays away for this browser session.
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    let dismissed = false;
+    try {
+      dismissed = window.sessionStorage.getItem(NAME_PROMPT_KEY) === "1";
+    } catch {
+      // Storage unavailable: show the prompt.
+    }
+    if (!dismissed) setOpen(true);
+  }, []);
+  const close = (next: boolean) => {
+    setOpen(next);
+    if (!next) {
+      try {
+        window.sessionStorage.setItem(NAME_PROMPT_KEY, "1");
+      } catch {
+        // Storage unavailable (private mode): the prompt simply shows again next time.
+      }
+    }
+  };
+  return (
+    <Modal
+      open={open}
+      onOpenChange={close}
+      size="sm"
+      title="Як вас звати?"
+      description="Ім’я бачитимуть колеги у завданнях, документах та історії дій замість адреси електронної пошти."
+    >
+      <ProfileForm fullName="" isAdvocate={false} certificateNo="" onSaved={() => close(false)} />
+    </Modal>
+  );
+}
 
 function Header({ user }: { user: ShellUser }) {
   const form = useRecordForm();
@@ -62,7 +108,9 @@ function Header({ user }: { user: ShellUser }) {
           header={
             <>
               <p className="font-medium break-all">{user.displayName}</p>
-              <p className="text-muted">{roleLabel[user.role]}</p>
+              <p className="text-muted">
+                {roleLabel[user.role]} · {user.workspace.name}
+              </p>
             </>
           }
           items={[
@@ -99,6 +147,9 @@ export function AppShell({ children, user, lookups }: { children: ReactNode; use
                 {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
               </IconButton>
             </div>
+            <div className={cn("border-b border-line p-2", collapsed && "px-1")}>
+              <WorkspaceSwitcher current={user.workspace} workspaces={user.workspaces} collapsed={collapsed} />
+            </div>
             <SidebarNav collapsed={collapsed} />
           </aside>
 
@@ -110,8 +161,12 @@ export function AppShell({ children, user, lookups }: { children: ReactNode; use
           </div>
 
           <MobileBar onMore={() => setMenuOpen(true)} />
+          {user.needsName && <NamePrompt />}
           <Drawer open={menuOpen} onOpenChange={setMenuOpen} title="LegalDesk UA">
             <div className="flex min-h-full flex-col">
+              <div className="border-b border-line p-2">
+                <WorkspaceSwitcher current={user.workspace} workspaces={user.workspaces} />
+              </div>
               <SidebarNav onNavigate={() => setMenuOpen(false)} />
             </div>
           </Drawer>

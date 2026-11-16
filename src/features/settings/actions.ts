@@ -6,7 +6,7 @@ import { dbError, fail, refreshAll, type ActionResult } from "@/lib/actions";
 import { createClient } from "@/lib/supabase/server";
 
 /** The editable reference lists. The database allows changes only for the administrator. */
-const refTable = z.enum(["practice_areas", "matter_types", "case_statuses", "party_roles", "document_categories", "court_types"]);
+const refTable = z.enum(["practice_areas", "matter_types", "case_statuses", "party_roles", "document_categories"]);
 export type RefTable = z.infer<typeof refTable>;
 
 const refInput = z.object({
@@ -49,11 +49,16 @@ export async function setMemberFinanceAccess(value: z.infer<typeof financeInput>
   const parsed = financeInput.safeParse(value);
   if (!parsed.success) return fail("Некоректне значення.");
   const supabase = await createClient();
-  const { data, error } = await supabase.from("app_settings").update({ member_finance_access: parsed.data, updated_by: user.id }).eq("id", true).select("id");
+  const { data, error } = await supabase.from("workspaces").update({ member_finance_access: parsed.data }).eq("id", user.workspace.id).select("id");
   if (error || !data?.length) return fail(dbError(error));
   refreshAll();
   return { ok: true, data: { id: "settings" } };
 }
+
+const memberErrors: Record<string, string> = {
+  LAST_ADMIN: "У робочому просторі має залишитися хоча б один адміністратор.",
+  USER_LIMIT_REACHED: "Усі місця в робочому просторі зайнято. Спершу вимкніть доступ іншому учаснику.",
+};
 
 const userInput = z.object({ id: z.uuid(), role: z.enum(["admin", "member"]).optional(), isActive: z.boolean().optional() });
 
@@ -68,8 +73,13 @@ export async function updateUserAccess(input: z.infer<typeof userInput>): Promis
   if (parsed.data.role) values.role = parsed.data.role;
   if (parsed.data.isActive !== undefined) values.is_active = parsed.data.isActive;
   const supabase = await createClient();
-  const { data, error } = await supabase.from("profiles").update(values as never).eq("id", parsed.data.id).select("id");
-  if (error) return fail(dbError(error));
+  const { data, error } = await supabase
+    .from("workspace_members")
+    .update(values as never)
+    .eq("workspace_id", user.workspace.id)
+    .eq("user_id", parsed.data.id)
+    .select("user_id");
+  if (error) return fail(memberErrors[error.message] ?? dbError(error));
   if (!data?.length) return fail("Користувача не знайдено.");
   refreshAll();
   return { ok: true, data: { id: parsed.data.id } };

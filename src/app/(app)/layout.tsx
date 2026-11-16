@@ -6,7 +6,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const user = await requireUser();
   const lookups = await getLookups();
   return (
-    <AppShell user={{ displayName: user.displayName, role: user.role }} lookups={lookups}>
+    <AppShell
+      user={{
+        displayName: user.displayName,
+        role: user.role,
+        needsName: !user.fullName.trim(),
+        workspace: { id: user.workspace.id, name: user.workspace.name },
+        workspaces: user.workspaces,
+      }}
+      lookups={lookups}
+    >
       {children}
     </AppShell>
   );

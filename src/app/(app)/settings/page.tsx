@@ -5,29 +5,38 @@ import { Tabs } from "@/components/ui/tabs";
 import { cancelInvitation } from "@/features/auth/actions";
 import { InviteForm, ProfileForm } from "@/features/auth/forms";
 import { FinanceAccessPanel, ReferenceLists, UsersPanel } from "@/features/settings/settings-panels";
+import { WorkspacePanel } from "@/features/workspaces/workspace-ui";
 import { roleLabel } from "@/i18n/uk";
-import { requireUser } from "@/lib/auth";
+import { nameFromEmail, requireUser } from "@/lib/auth";
 import { formatDate } from "@/lib/dates";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Налаштування" };
 
-export default async function SettingsPage() {
+type Props = { searchParams: Promise<{ tab?: string }> };
+
+export default async function SettingsPage({ searchParams }: Props) {
+  const { tab } = await searchParams;
   const user = await requireUser();
   const isAdmin = user.role === "admin";
   const supabase = await createClient();
 
-  const [profiles, settings, invitations, own] = await Promise.all([
-    supabase.from("profiles").select("id, full_name, email, role, is_active").order("created_at"),
-    supabase.from("app_settings").select("max_users").single(),
+  const [members, invitations, own] = await Promise.all([
+    supabase
+      .from("workspace_members")
+      .select("role, is_active, profile:profiles (id, full_name, email)")
+      .eq("workspace_id", user.workspace.id)
+      .order("created_at"),
     // Row-level security returns invitations to the administrator only.
     supabase.from("user_invitations").select("id, email, full_name, created_at").is("accepted_at", null).order("created_at"),
     supabase.from("profiles").select("advocate_certificate_no").eq("id", user.id).single(),
   ]);
-  if (profiles.error || settings.error) throw new Error("Failed to load settings");
+  if (members.error) throw new Error("Failed to load settings");
 
-  const users = profiles.data;
-  const maxUsers = settings.data.max_users;
+  const users = members.data
+    .filter((m) => m.profile)
+    .map((m) => ({ id: m.profile!.id, full_name: m.profile!.full_name, email: m.profile!.email, role: m.role, is_active: m.is_active }));
+  const maxUsers = user.workspace.maxUsers;
   const activeCount = users.filter((u) => u.is_active).length;
   const pending = invitations.data ?? [];
   const seatFree = activeCount + pending.length < maxUsers;
@@ -36,6 +45,7 @@ export default async function SettingsPage() {
     <>
       <PageHeader title="Налаштування" />
       <Tabs
+        defaultTab={tab}
         tabs={[
           {
             id: "profile", label: "Профіль",
@@ -44,7 +54,7 @@ export default async function SettingsPage() {
                 <DetailList
                   items={[
                     { label: "Електронна пошта", value: user.email },
-                    { label: "Роль", value: roleLabel[user.role] },
+                    { label: "Роль у робочому просторі", value: roleLabel[user.role] },
                   ]}
                 />
                 <div className="mt-4 border-t border-line pt-4">
@@ -54,7 +64,17 @@ export default async function SettingsPage() {
             ),
           },
           {
-            id: "users", label: "Користувачі", count: users.length,
+            id: "workspace", label: "Робочий простір",
+            content: (
+              <WorkspacePanel
+                workspace={{ id: user.workspace.id, name: user.workspace.name, maxUploadMb: user.workspace.maxUploadMb, maxUsers }}
+                workspaces={user.workspaces}
+                isAdmin={isAdmin}
+              />
+            ),
+          },
+          {
+            id: "users", label: "Учасники", count: users.length,
             content: (
               <div className="grid max-w-5xl gap-4 lg:grid-cols-2">
                 <div className="space-y-4">
@@ -65,7 +85,7 @@ export default async function SettingsPage() {
                         {pending.map((inv) => (
                           <li key={inv.id} className="flex items-center gap-3 px-4 py-3">
                             <div className="min-w-0 flex-1">
-                              <p className="text-sm font-medium">{inv.full_name || inv.email}</p>
+                              <p className="text-sm font-medium">{inv.full_name || nameFromEmail(inv.email)}</p>
                               <p className="num truncate text-[13px] text-muted">
                                 {inv.email} · надіслано {formatDate(inv.created_at)}
                               </p>
@@ -82,13 +102,13 @@ export default async function SettingsPage() {
                     </Card>
                   )}
                   {isAdmin && (
-                    <Card title="Запросити користувача">
+                    <Card title="Запросити до робочого простору">
                       {seatFree ? (
                         <InviteForm />
                       ) : (
                         <p className="text-[13px] text-muted">
-                          Усі місця зайнято або очікують на прийняття запрошення: система розрахована на {maxUsers} користувачів.
-                          Публічної реєстрації немає — обліковий запис створюється лише за запрошенням адміністратора.
+                          Усі місця зайнято або очікують на прийняття запрошення: у цьому робочому просторі {maxUsers} місць.
+                          Вимкніть доступ учаснику, який більше не працює, щоб звільнити місце.
                         </p>
                       )}
                     </Card>

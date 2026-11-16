@@ -110,6 +110,11 @@ export interface Court extends Versioned {
   email: string;
   website: string;
   notes: string;
+  /** From the shared official directory (read-only), not added by this workspace. */
+  official: boolean;
+  /** Official court code of the State Judicial Administration, e.g. "2610". */
+  code: string;
+  workingHours: string;
 }
 
 export interface DocumentVersion {

@@ -80,8 +80,9 @@ const entityNames: Record<string, { noun: string; href?: (e: ActivityEntry) => s
   expenses: { noun: "витрату", href: () => "/finance?tab=expenses" },
   notes: { noun: "нотатку", href: () => "/notes" },
   profiles: { noun: "профіль користувача", href: () => "/settings" },
-  app_settings: { noun: "налаштування", href: () => "/settings" },
-  user_invitations: { noun: "запрошення", href: () => "/settings" },
+  workspaces: { noun: "робочий простір", href: () => "/settings?tab=workspace" },
+  workspace_members: { noun: "учасника", href: () => "/settings?tab=users" },
+  user_invitations: { noun: "запрошення", href: () => "/settings?tab=users" },
 };
 
 const verbs: Record<string, string> = {
@@ -96,7 +97,9 @@ const verbs: Record<string, string> = {
 export function describeActivity(e: ActivityEntry, statusName: (id?: string) => string | undefined): string {
   const noun = entityNames[e.entityType]?.noun ?? "запис";
   if (e.entityType === "document_versions" && e.action === "created") return "Завантажено файл документа";
-  if (e.entityType === "user_invitations" && e.action === "created") return "Надіслано запрошення користувачу";
+  if (e.entityType === "user_invitations" && e.action === "created") return "Надіслано запрошення";
+  if (e.entityType === "workspace_members" && e.action === "created") return "Учасника додано до робочого простору";
+  if (e.entityType === "workspaces" && e.action === "created") return "Створено робочий простір";
   const status = e.changes.status;
   if (e.action === "updated" && status && "new" in status) {
     const label = (v: unknown) =>

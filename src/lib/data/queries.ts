@@ -129,7 +129,8 @@ export async function getCasePage(id: string) {
   const legalCase = check(await supabase.from("cases").select("*").eq("id", id).maybeSingle());
   if (!legalCase) notFound();
 
-  const [parties, documents, tasks, events, notes, activity, finance] = await Promise.all([
+  const courtId: string | null = (legalCase as Tables<"cases">).court_id;
+  const [parties, documents, tasks, events, notes, activity, finance, court] = await Promise.all([
     supabase.from("case_parties").select("*").eq("case_id", id).order("created_at"),
     supabase.from("documents").select(DOCUMENT_COLUMNS).eq("case_id", id).is("archived_at", null).order("updated_at", { ascending: false }),
     supabase.from("tasks").select("*").eq("case_id", id).is("archived_at", null).order("due_date", { nullsFirst: false }),
@@ -137,10 +138,12 @@ export async function getCasePage(id: string) {
     supabase.from("notes").select("*").eq("case_id", id).is("archived_at", null).order("updated_at", { ascending: false }),
     supabase.from("activity_logs").select("*").eq("case_id", id).order("occurred_at", { ascending: false }).limit(50),
     financeFor(supabase, { caseId: id }),
+    courtId ? supabase.from("courts").select("*").eq("id", courtId).maybeSingle() : Promise.resolve({ data: null }),
   ]);
 
   return {
     legalCase: toCase(legalCase),
+    court: court.data ? toCourt(court.data) : null,
     parties: check(parties).map(toParty),
     documents: (check(documents) as DocumentRow[]).map(toDocument),
     tasks: check(tasks).map(toTask),
@@ -277,18 +280,27 @@ export async function listNotes(params: SearchParams) {
 
 export async function listCourts(params: SearchParams) {
   const supabase = await createClient();
-  let query = supabase.from("courts").select("*");
+  const { from, to, page } = pageOf(params);
+  let query = supabase.from("courts").select("*", { count: "exact" });
   query = param(params, "archived") === "1" ? query.not("archived_at", "is", null) : query.is("archived_at", null);
   const type = param(params, "type");
   if (isUuid(type)) query = query.eq("court_type_id", type);
-  const search = anyColumnLike(["name", "city", "region"], param(params, "q"));
+  const region = param(params, "region");
+  if (region) query = query.eq("region", region);
+  const source = param(params, "source");
+  if (source === "official") query = query.is("workspace_id", null);
+  if (source === "own") query = query.not("workspace_id", "is", null);
+  const search = anyColumnLike(["name", "city", "region", "address"], param(params, "q"));
   if (search) query = query.or(search);
-  const courts = check(await query.order("name")).map(toCourt);
-  // How many active matters each court has, for the directory.
-  const { data: usage } = await supabase.from("cases").select("court_id").is("archived_at", null).not("court_id", "is", null);
+  const result = await query.order("name").range(from, to);
+  const courts = check(result).map(toCourt);
+  // How many active matters each court on this page has.
   const counts = new Map<string, number>();
-  for (const row of usage ?? []) if (row.court_id) counts.set(row.court_id, (counts.get(row.court_id) ?? 0) + 1);
-  return courts.map((c) => ({ ...c, caseCount: counts.get(c.id) ?? 0 }));
+  if (courts.length) {
+    const { data: usage } = await supabase.from("cases").select("court_id").is("archived_at", null).in("court_id", courts.map((c) => c.id));
+    for (const row of usage ?? []) if (row.court_id) counts.set(row.court_id, (counts.get(row.court_id) ?? 0) + 1);
+  }
+  return { rows: courts.map((c) => ({ ...c, caseCount: counts.get(c.id) ?? 0 })), total: result.count ?? 0, page };
 }
 
 /** Task titles for linking a note to a task. */

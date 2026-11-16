@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FileUp, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -67,7 +68,7 @@ export function DocumentActions({ document }: { document: DocumentRecord }) {
   );
 }
 
-export function VersionsList({ versions }: { versions: DocumentVersion[] }) {
+export function VersionsList({ versions, shownId, documentId }: { versions: DocumentVersion[]; shownId?: string; documentId: string }) {
   const { userName } = useLookups();
   return (
     <ul className="divide-y divide-line">
@@ -78,6 +79,13 @@ export function VersionsList({ versions }: { versions: DocumentVersion[] }) {
             <p className="flex flex-wrap items-center gap-2 text-sm">
               <span className="font-medium">Версія {v.versionNo}</span>
               {i === 0 && <Badge tone="accent">Поточна</Badge>}
+              {v.id === shownId ? (
+                <span className="text-xs text-muted">переглядається</span>
+              ) : (
+                <Link href={i === 0 ? `/documents/${documentId}` : `/documents/${documentId}?v=${v.id}`} scroll={false} className="text-xs text-accent hover:underline">
+                  Переглянути
+                </Link>
+              )}
               <span className="truncate text-muted">{v.originalFilename}</span>
             </p>
             <p className="num text-[13px] text-muted">
@@ -88,31 +96,5 @@ export function VersionsList({ versions }: { versions: DocumentVersion[] }) {
         </li>
       ))}
     </ul>
-  );
-}
-
-/** Inline preview where the browser can show the format natively; otherwise an honest note. */
-export function Preview({ version }: { version: DocumentVersion | null }) {
-  if (!version) return <p className="p-4 text-[13px] text-muted">Файл ще не завантажено.</p>;
-  const kind = fileKindByMime(version.mimeType).preview;
-  const src = `/api/files/${version.id}?inline=1`;
-  if (kind === "image") {
-    // eslint-disable-next-line @next/next/no-img-element
-    return <img src={src} alt={version.originalFilename} className="mx-auto max-h-[70dvh] w-auto rounded" />;
-  }
-  if (kind === "pdf") {
-    return (
-      <div className="p-4 text-[13px] text-muted">
-        PDF відкриється в новій вкладці через тимчасове посилання.{" "}
-        <a href={src} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">
-          Переглянути PDF
-        </a>
-      </div>
-    );
-  }
-  return (
-    <p className="p-4 text-[13px] text-muted">
-      Перегляд файлів {fileKindByMime(version.mimeType).label} у браузері не підтримується. Завантажте файл, щоб відкрити його.
-    </p>
   );
 }

@@ -261,26 +261,39 @@ document), connection indicator, user menu. Auth routes: `/login`, `/forgot-pass
 - Password recovery through Supabase's emailed link → `/reset-password`.
 - TOTP two-factor is available on all Supabase plans. Recommended for both users; see Q8.
 
-### 7.2 The two-user limit
+### 7.2 Workspaces and seats
 
-Enforced in the database, so it holds even if the app is bypassed:
+Since migration `20261116210507_workspaces` the system is multi-tenant. Each **workspace**
+(a practice, firm or team) has its own clients, matters, documents, finance, reference lists,
+history, members and settings (`public.workspaces` replaces the single-row `app_settings`).
 
-1. Trigger on `auth.users` insert creates the `profiles` row.
-2. A `BEFORE INSERT` trigger on `profiles` counts active profiles and raises an exception
-   when the count would exceed `app_settings.max_users` — the whole sign-up/invite
-   transaction rolls back.
-3. The invite server action checks the same limit first to give a clear message.
-
-Raising the limit is an explicit admin change to `app_settings` (a future-version feature;
-no UI for it in v1).
+- `workspace_members (workspace_id, user_id, role, is_active)` holds the role per workspace;
+  one person can be an administrator in one workspace and a member in another.
+- `profiles.current_workspace_id` is the workspace the person is working in. Every policy is
+  `workspace_id = private.current_workspace_id()`, which returns null unless the person is an
+  active member of it — so switching workspaces or losing access takes effect at once,
+  including for realtime notifications. A trigger refuses switching into a workspace one is not
+  an active member of.
+- Every workspace table has `workspace_id` (defaulting to the current workspace) and every
+  foreign key between workspace tables includes it, so a record can never point at another
+  workspace's data. Client and matter numbers restart in each workspace.
+- Seats: `workspaces.max_users` (default 10) is enforced by triggers on invitations and on
+  reactivating a member. Inviting an e-mail that already has an account adds it to the
+  workspace immediately; otherwise Supabase Auth sends the invitation e-mail.
+- `public.create_workspace(name)` creates a workspace with the caller as administrator and
+  the default reference lists. Sign-up stays invitation-only; the very first account gets a
+  workspace of its own.
+- Shared, read-only data: `court_types` and the official court directory (courts with
+  `workspace_id is null`, keyed by the official court `code`). A workspace may add its own courts.
 
 ### 7.3 Authorization (RLS)
 
 - RLS enabled and **forced** on every table in `public`. No policy for the `anon` role anywhere.
-- Helper functions `is_active_user()`, `is_admin()`, `finance_access()` (`SECURITY DEFINER`,
-  fixed `search_path`, in a non-exposed schema) are used by policies.
-- Role escalation: users cannot update `role` / `is_active` on any profile unless
-  `is_admin()`; a trigger additionally blocks an admin from demoting the last active admin.
+- Helper functions `current_workspace_id()`, `is_active_user()`, `is_admin()`,
+  `can_read_finance()`, `can_write_finance()` (`SECURITY DEFINER`, fixed `search_path`, in a
+  non-exposed schema) are used by policies; all evaluate the *current workspace*.
+- Role escalation: only an administrator of the workspace can change `role` / `is_active` of
+  its members; a trigger blocks removing the last active administrator of a workspace.
 - A deactivated user fails `is_active_user()` immediately, regardless of a still-valid token.
 - `activity_logs`: `SELECT` policy only. No insert/update/delete policy — rows come solely
   from triggers.

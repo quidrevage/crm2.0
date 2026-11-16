@@ -1,6 +1,7 @@
 "use client";
 
 import { Controller, useForm } from "react-hook-form";
+import { SearchSelect } from "@/components/ui/search-select";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/form";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -179,15 +180,18 @@ export function CaseForm({ values, meta, onDone }: FormProps<CaseValues>) {
           <Field label="Номер судової справи" hint="Якщо вже присвоєно">
             <Input {...register("courtCaseNumber")} className="num" />
           </Field>
-          <Field label="Суд" hint={courts.length === 0 ? "Спершу додайте суд у розділі «Суди»" : undefined}>
-            <Select {...register("courtId")}>
-              <option value="">Не обрано</option>
-              {courts.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </Select>
+          <Field label="Суд" hint="Пошук за назвою або містом">
+            <Controller
+              control={control}
+              name="courtId"
+              render={({ field }) => (
+                <SearchSelect
+                  value={field.value ?? ""}
+                  onChange={field.onChange}
+                  options={courts.map((c) => ({ value: c.id, label: c.name, hint: c.city || undefined }))}
+                />
+              )}
+            />
           </Field>
           <Field label="Суддя" hint="Якщо відомо">
             <Input {...register("judge")} />

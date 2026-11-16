@@ -1,3 +1,4 @@
+import { ExportButton } from "@/features/export-button";
 import type { Metadata } from "next";
 import { PageHeader } from "@/components/ui/display";
 import { CreateButton } from "@/features/record-actions";
@@ -10,7 +11,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   const { rows, total, page } = await listTasks(await searchParams);
   return (
     <>
-      <PageHeader title="Завдання" meta={<span className="num">Знайдено: {total}</span>} actions={<CreateButton kind="task" label="Додати завдання" />} />
+      <PageHeader title="Завдання" meta={<span className="num">Знайдено: {total}</span>} actions={<><ExportButton kind="tasks" /><CreateButton kind="task" label="Додати завдання" /></>} />
       <TasksList rows={rows} total={total} page={page} pageSize={PAGE_SIZE} />
     </>
   );

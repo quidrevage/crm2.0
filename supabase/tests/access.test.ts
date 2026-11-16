@@ -13,11 +13,15 @@ beforeAll(async () => {
   t = await createDatabase();
 }, 120_000);
 
-describe("accounts and the two-user limit", () => {
-  it("makes the first account the administrator", async () => {
+const ws = `(select id from public.workspaces order by created_at limit 1)`;
+const membership = `select m.role, m.is_active from public.workspace_members m join public.profiles p on p.id = m.user_id and p.current_workspace_id = m.workspace_id where m.user_id = $1`;
+
+describe("accounts and the seat limit", () => {
+  it("gives the first account a workspace of its own, as administrator", async () => {
     admin = await t.createAuthUser("admin@example.com");
-    const [profile] = await t.asOwner(`select role, is_active from public.profiles where id = $1`, [admin]);
-    expect(profile).toEqual({ role: "admin", is_active: true });
+    expect(await t.asOwner(membership, [admin])).toEqual([{ role: "admin", is_active: true }]);
+    expect(await t.asOwner(`select count(*)::int as n from public.practice_areas`)).toEqual([{ n: 13 }]);
+    await t.asOwner(`update public.workspaces set max_users = 2`);
   });
 
   it("rejects a second account that was not invited", async () => {
@@ -28,8 +32,8 @@ describe("accounts and the two-user limit", () => {
   it("creates the invited second account as a member", async () => {
     await t.asUser(admin, `insert into public.user_invitations (email, full_name) values ('member@example.com', 'Андрій Мельник')`);
     member = await t.createAuthUser("member@example.com");
-    const [profile] = await t.asOwner(`select role, full_name from public.profiles where id = $1`, [member]);
-    expect(profile).toEqual({ role: "member", full_name: "Андрій Мельник" });
+    expect(await t.asOwner(membership, [member])).toEqual([{ role: "member", is_active: true }]);
+    expect(await t.asOwner(`select full_name from public.profiles where id = $1`, [member])).toEqual([{ full_name: "Андрій Мельник" }]);
   });
 
   it("refuses to invite or create a third account", async () => {
@@ -38,7 +42,7 @@ describe("accounts and the two-user limit", () => {
     ).rejects.toThrow(/USER_LIMIT_REACHED/);
     // Even with an invitation forced in by the database owner, the account itself is refused.
     await t.asOwner(`alter table public.user_invitations disable trigger check_invitation`);
-    await t.asOwner(`insert into public.user_invitations (email) values ('third@example.com')`);
+    await t.asOwner(`insert into public.user_invitations (workspace_id, email) values (${ws}, 'third@example.com')`);
     await t.asOwner(`alter table public.user_invitations enable trigger check_invitation`);
     await expect(t.createAuthUser("third@example.com")).rejects.toThrow(/USER_LIMIT_REACHED/);
     expect(await t.asOwner(`select count(*)::int as n from public.profiles`)).toEqual([{ n: 2 }]);
@@ -54,7 +58,8 @@ describe("accounts and the two-user limit", () => {
 
 describe("role escalation", () => {
   it("blocks a member from promoting themselves", async () => {
-    await expect(t.asUser(member, `update public.profiles set role = 'admin' where id = $1`, [member])).rejects.toThrow(/ADMIN_REQUIRED/);
+    expect(await t.asUser(member, `update public.workspace_members set role = 'admin' where user_id = $1 returning 1`, [member])).toHaveLength(0);
+    expect(await t.asOwner(membership, [member])).toEqual([{ role: "member", is_active: true }]);
   });
 
   it("blocks a member from editing the administrator's profile", async () => {
@@ -68,14 +73,14 @@ describe("role escalation", () => {
   });
 
   it("never allows removing the last administrator", async () => {
-    await expect(t.asUser(admin, `update public.profiles set role = 'member' where id = $1`, [admin])).rejects.toThrow(/LAST_ADMIN/);
-    await expect(t.asUser(admin, `update public.profiles set is_active = false where id = $1`, [admin])).rejects.toThrow(/LAST_ADMIN/);
+    await expect(t.asUser(admin, `update public.workspace_members set role = 'member' where user_id = $1`, [admin])).rejects.toThrow(/LAST_ADMIN/);
+    await expect(t.asUser(admin, `update public.workspace_members set is_active = false where user_id = $1`, [admin])).rejects.toThrow(/LAST_ADMIN/);
   });
 
-  it("keeps application settings admin-only", async () => {
-    const rows = await t.asUser(member, `update public.app_settings set max_users = 5 returning max_users`);
+  it("keeps workspace settings admin-only", async () => {
+    const rows = await t.asUser(member, `update public.workspaces set max_users = 5 returning max_users`);
     expect(rows).toHaveLength(0);
-    expect(await t.asOwner(`select max_users from public.app_settings`)).toEqual([{ max_users: 2 }]);
+    expect(await t.asOwner(`select max_users from public.workspaces`)).toEqual([{ max_users: 2 }]);
   });
 });
 
@@ -203,17 +208,17 @@ describe("finance permissions", () => {
   });
 
   it("hides finance from a member when set to 'none', including in the audit trail", async () => {
-    await t.asUser(admin, `update public.app_settings set member_finance_access = 'none'`);
+    await t.asUser(admin, `update public.workspaces set member_finance_access = 'none'`);
     expect(await t.asUser(member, `select 1 from public.payments`)).toHaveLength(0);
     expect(await t.asUser(member, `select 1 from public.fee_agreements`)).toHaveLength(0);
     expect(await t.asUser(member, `select 1 from public.activity_logs where entity_type = 'payments'`)).toHaveLength(0);
   });
 
   it("lets a member write when set to 'write'", async () => {
-    await t.asUser(admin, `update public.app_settings set member_finance_access = 'write'`);
+    await t.asUser(admin, `update public.workspaces set member_finance_access = 'write'`);
     const rows = await t.asUser(member, `insert into public.payments (client_id, amount_uah) values ($1, 1500.50) returning amount_uah`, [clientId]);
     expect(Number(rows[0].amount_uah)).toBe(1500.5);
-    await t.asUser(admin, `update public.app_settings set member_finance_access = 'read'`);
+    await t.asUser(admin, `update public.workspaces set member_finance_access = 'read'`);
   });
 
   it("rejects zero or negative amounts", async () => {
@@ -297,8 +302,8 @@ describe("audit trail", () => {
   });
 
   it("hides user-administration entries from a member", async () => {
-    expect(await t.asUser(member, `select 1 from public.activity_logs where entity_type in ('app_settings', 'user_invitations')`)).toHaveLength(0);
-    expect((await t.asUser(admin, `select 1 from public.activity_logs where entity_type in ('app_settings', 'user_invitations')`)).length).toBeGreaterThan(0);
+    expect(await t.asUser(member, `select 1 from public.activity_logs where entity_type in ('workspaces', 'user_invitations')`)).toHaveLength(0);
+    expect((await t.asUser(admin, `select 1 from public.activity_logs where entity_type in ('workspaces', 'user_invitations')`)).length).toBeGreaterThan(0);
   });
 });
 
@@ -321,11 +326,12 @@ describe("search", () => {
 describe("deactivated account", () => {
   it("loses all access immediately, and reference lists stay admin-managed", async () => {
     await expect(t.asUser(member, `insert into public.practice_areas (name) values ('Нова галузь')`)).rejects.toThrow(/row-level security/);
-    await t.asUser(admin, `update public.profiles set is_active = false where id = $1`, [member]);
+    await t.asUser(admin, `update public.workspace_members set is_active = false where user_id = $1`, [member]);
     expect(await t.asUser(member, `select 1 from public.clients`)).toHaveLength(0);
-    expect(await t.asUser(member, `select 1 from public.profiles`)).toHaveLength(0);
+    // Only their own profile is left visible.
+    expect(await t.asUser(member, `select id from public.profiles`)).toEqual([{ id: member }]);
     expect(await t.asUser(member, `select 1 from public.search_global('тест')`)).toHaveLength(0);
-    await expect(t.asUser(member, `insert into public.clients (client_type, name) values ('individual', 'X')`)).rejects.toThrow(/row-level security/);
+    await expect(t.asUser(member, `insert into public.clients (client_type, name) values ('individual', 'X')`)).rejects.toThrow(/row-level security|null value in column "workspace_id"/);
   });
 
   it("frees the seat so the administrator can invite a replacement", async () => {
@@ -334,6 +340,6 @@ describe("deactivated account", () => {
     const replacement = await t.createAuthUser("new@example.com");
     expect(await t.asUser(replacement, `select count(*)::int as n from public.clients`)).toEqual([{ n: 1 }]);
     // …and the old account cannot be reactivated past the limit.
-    await expect(t.asUser(admin, `update public.profiles set is_active = true where id = $1`, [member])).rejects.toThrow(/USER_LIMIT_REACHED/);
+    await expect(t.asUser(admin, `update public.workspace_members set is_active = true where user_id = $1`, [member])).rejects.toThrow(/USER_LIMIT_REACHED/);
   });
 });
