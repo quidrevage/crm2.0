@@ -107,6 +107,7 @@ export async function updateProfile(_prev: FormState, formData: FormData): Promi
 const dbMessages: Record<string, string> = {
   USER_LIMIT_REACHED: "Усі місця в робочому просторі зайнято. Спершу вимкніть доступ іншому учаснику.",
   ALREADY_MEMBER: "Ця людина вже є учасником робочого простору.",
+  ALREADY_INVITED: "На цю адресу вже надіслано запрошення, яке ще діє. Скасуйте його, щоб надіслати нове.",
   ADMIN_REQUIRED: "Запрошувати користувачів може лише адміністратор.",
 };
 
@@ -115,8 +116,12 @@ export async function inviteUser(_prev: FormState, formData: FormData): Promise<
   if (user.role !== "admin") return { error: dbMessages.ADMIN_REQUIRED };
 
   const parsed = z
-    .object({ email, fullName: z.string().trim().min(2, "Вкажіть ім’я та прізвище.").max(120) })
-    .safeParse({ email: formData.get("email"), fullName: formData.get("fullName") });
+    .object({
+      email,
+      fullName: z.string().trim().min(2, "Вкажіть ім’я та прізвище.").max(120),
+      role: z.enum(["member", "admin"]).default("member"),
+    })
+    .safeParse({ email: formData.get("email"), fullName: formData.get("fullName"), role: formData.get("role") ?? undefined });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
   // Step 1 — as the signed-in user: the database itself checks "is admin" and "is there a free seat".
@@ -124,11 +129,11 @@ export async function inviteUser(_prev: FormState, formData: FormData): Promise<
   const supabase = await createClient();
   const { data: invitation, error: inviteError } = await supabase
     .from("user_invitations")
-    .insert({ email: parsed.data.email, full_name: parsed.data.fullName })
+    .insert({ email: parsed.data.email, full_name: parsed.data.fullName, role: parsed.data.role })
     .select("id")
     .single();
   if (inviteError) {
-    if (inviteError.code === "23505") return { error: "Цю адресу вже запрошено." };
+    if (inviteError.code === "23505") return { error: dbMessages.ALREADY_INVITED };
     return { error: dbMessages[inviteError.message] ?? "Не вдалося створити запрошення." };
   }
   // The database accepts it in an after-insert trigger, so read the row back.

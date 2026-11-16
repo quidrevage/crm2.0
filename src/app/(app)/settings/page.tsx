@@ -28,7 +28,7 @@ export default async function SettingsPage({ searchParams }: Props) {
       .eq("workspace_id", user.workspace.id)
       .order("created_at"),
     // Row-level security returns invitations to the administrator only.
-    supabase.from("user_invitations").select("id, email, full_name, created_at").is("accepted_at", null).order("created_at"),
+    supabase.from("user_invitations").select("id, email, full_name, role, created_at, expires_at").is("accepted_at", null).order("created_at"),
     supabase.from("profiles").select("advocate_certificate_no").eq("id", user.id).single(),
   ]);
   if (members.error) throw new Error("Failed to load settings");
@@ -38,8 +38,11 @@ export default async function SettingsPage({ searchParams }: Props) {
     .map((m) => ({ id: m.profile!.id, full_name: m.profile!.full_name, email: m.profile!.email, role: m.role, is_active: m.is_active }));
   const maxUsers = user.workspace.maxUsers;
   const activeCount = users.filter((u) => u.is_active).length;
+  const now = new Date().toISOString();
   const pending = invitations.data ?? [];
-  const seatFree = activeCount + pending.length < maxUsers;
+  // Expired invitations no longer hold a seat; they are replaced when the address is invited again.
+  const waiting = pending.filter((inv) => inv.expires_at > now);
+  const seatFree = activeCount + waiting.length < maxUsers;
 
   return (
     <>
@@ -87,7 +90,8 @@ export default async function SettingsPage({ searchParams }: Props) {
                             <div className="min-w-0 flex-1">
                               <p className="text-sm font-medium">{inv.full_name || nameFromEmail(inv.email)}</p>
                               <p className="num truncate text-[13px] text-muted">
-                                {inv.email} · надіслано {formatDate(inv.created_at)}
+                                {inv.email} · {roleLabel[inv.role]} ·{" "}
+                                {inv.expires_at > now ? `діє до ${formatDate(inv.expires_at)}` : "строк дії минув"}
                               </p>
                             </div>
                             <form action={cancelInvitation}>

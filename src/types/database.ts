@@ -1683,7 +1683,9 @@ export type Database = {
           email: string
           full_name: string
           id: string
+          expires_at: string
           invited_by: string | null
+          role: Database["public"]["Enums"]["user_role"]
           workspace_id: string
         }
         Insert: {
@@ -1692,7 +1694,9 @@ export type Database = {
           email: string
           full_name?: string
           id?: string
+          expires_at?: string
           invited_by?: string | null
+          role?: Database["public"]["Enums"]["user_role"]
           workspace_id?: string
         }
         Update: {
@@ -1701,7 +1705,9 @@ export type Database = {
           email?: string
           full_name?: string
           id?: string
+          expires_at?: string
           invited_by?: string | null
+          role?: Database["public"]["Enums"]["user_role"]
           workspace_id?: string
         }
         Relationships: [
