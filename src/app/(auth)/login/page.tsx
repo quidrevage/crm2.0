@@ -13,7 +13,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   return (
     <>
       <h1 className="text-lg font-semibold tracking-tight">Вхід до системи</h1>
-      <p className="mt-1 mb-4 text-[13px] text-muted">Доступ мають лише запрошені користувачі. Реєстрації немає.</p>
+      <p className="mt-1 mb-4 text-[13px] text-muted">Немає акаунта? Зареєструйтеся та створіть своє об’єднання.</p>
       <LoginForm notice={reason ? notices[reason] : undefined} />
     </>
   );

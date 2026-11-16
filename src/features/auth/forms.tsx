@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useActionState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox, Field, Input, Select } from "@/components/ui/form";
-import { addUserWithPassword, inviteUser, requestPasswordReset, setPassword, signIn, updateProfile, type FormState } from "./actions";
+import { addUserWithPassword, inviteUser, signUp, requestPasswordReset, setPassword, signIn, updateProfile, type FormState } from "./actions";
 
 function Message({ state }: { state: FormState }) {
   if (state?.error) {
@@ -39,9 +39,12 @@ export function LoginForm({ notice }: { notice?: string }) {
       <Button type="submit" variant="primary" className="w-full" disabled={pending}>
         {pending ? "Вхід…" : "Увійти"}
       </Button>
-      <p className="text-center text-[13px]">
+      <p className="flex justify-between text-[13px]">
         <Link href="/forgot-password" className="text-accent hover:underline">
           Забули пароль?
+        </Link>
+        <Link href="/register" className="text-accent hover:underline">
+          Зареєструватися
         </Link>
       </p>
     </form>
@@ -164,6 +167,51 @@ export function AddUserForm() {
           {pending ? "Додавання…" : "Додати користувача"}
         </Button>
       </div>
+    </form>
+  );
+}
+
+export function RegisterForm() {
+  const [state, action, pending] = useActionState(signUp, undefined);
+  if (state?.success) {
+    return (
+      <div className="space-y-3">
+        <Message state={state} />
+        <p className="text-center text-[13px]">
+          <Link href="/login" className="text-accent hover:underline">
+            Перейти до входу
+          </Link>
+        </p>
+      </div>
+    );
+  }
+  return (
+    <form action={action} className="space-y-3">
+      <Field label="Ім’я та прізвище" required>
+        <Input name="fullName" autoComplete="name" required />
+      </Field>
+      <Field label="Назва вашого об’єднання" hint="Бюро, фірма чи команда. Можна змінити пізніше.">
+        <Input name="workspaceName" placeholder="Наприклад: АО «Коваль і партнери»" maxLength={120} />
+      </Field>
+      <Field label="Електронна пошта" required>
+        <Input type="email" name="email" autoComplete="username" required />
+      </Field>
+      <Field label="Пароль" hint="Щонайменше 10 символів." required>
+        <Input type="password" name="password" autoComplete="new-password" required minLength={10} />
+      </Field>
+      <Field label="Повторіть пароль" required>
+        <Input type="password" name="confirm" autoComplete="new-password" required />
+      </Field>
+      <Message state={state} />
+      <Button type="submit" variant="primary" className="w-full" disabled={pending}>
+        {pending ? "Реєстрація…" : "Зареєструватися"}
+      </Button>
+      <p className="text-center text-[13px]">
+        Вже маєте акаунт?{" "}
+        <Link href="/login" className="text-accent hover:underline">
+          Увійти
+        </Link>
+      </p>
     </form>
   );
 }

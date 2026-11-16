@@ -59,8 +59,8 @@ export async function createDatabase() {
   }
 
   /** Simulates the Auth service creating an account. */
-  async function createAuthUser(email: string) {
-    const rows = await asOwner<{ id: string }>(`insert into auth.users (email) values ($1) returning id`, [email]);
+  async function createAuthUser(email: string, metadata: Record<string, string> = {}) {
+    const rows = await asOwner<{ id: string }>(`insert into auth.users (email, raw_user_meta_data) values ($1, $2) returning id`, [email, JSON.stringify(metadata)]);
     return rows[0].id;
   }
 

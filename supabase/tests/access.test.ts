@@ -24,9 +24,12 @@ describe("accounts and the seat limit", () => {
     await t.asOwner(`update public.workspaces set max_users = 2`);
   });
 
-  it("rejects a second account that was not invited", async () => {
-    await expect(t.createAuthUser("stranger@example.com")).rejects.toThrow(/INVITATION_REQUIRED/);
-    expect(await t.asOwner(`select 1 from auth.users where email = 'stranger@example.com'`)).toHaveLength(0);
+  it("gives an uninvited sign-up a separate workspace, not access to this one", async () => {
+    const [{ id: practice }] = (await t.asOwner(`select current_workspace_id as id from public.profiles where id = $1`, [admin])) as { id: string }[];
+    const stranger = await t.createAuthUser("stranger@example.com");
+    expect(await t.asUser(stranger, `select 1 from public.workspaces where id = $1`, [practice])).toHaveLength(0);
+    expect(await t.asUser(stranger, `select 1 from public.workspace_members where workspace_id = $1`, [practice])).toHaveLength(0);
+    expect(await t.asOwner(`select count(*)::int as n from public.workspace_members where workspace_id = ${ws}`)).toEqual([{ n: 1 }]);
   });
 
   it("creates the invited second account as a member", async () => {
@@ -40,12 +43,12 @@ describe("accounts and the seat limit", () => {
     await expect(
       t.asUser(admin, `insert into public.user_invitations (email) values ('third@example.com')`),
     ).rejects.toThrow(/USER_LIMIT_REACHED/);
-    // Even with an invitation forced in by the database owner, the account itself is refused.
+    // Even with an invitation forced in by the database owner, the person does not get a seat here.
     await t.asOwner(`alter table public.user_invitations disable trigger check_invitation`);
     await t.asOwner(`insert into public.user_invitations (workspace_id, email) values (${ws}, 'third@example.com')`);
     await t.asOwner(`alter table public.user_invitations enable trigger check_invitation`);
-    await expect(t.createAuthUser("third@example.com")).rejects.toThrow(/USER_LIMIT_REACHED/);
-    expect(await t.asOwner(`select count(*)::int as n from public.profiles`)).toEqual([{ n: 2 }]);
+    await t.createAuthUser("third@example.com");
+    expect(await t.asOwner(`select count(*)::int as n from public.workspace_members where workspace_id = ${ws} and is_active`)).toEqual([{ n: 2 }]);
   });
 
   it("does not let a member invite anyone", async () => {
@@ -80,7 +83,7 @@ describe("role escalation", () => {
   it("keeps workspace settings admin-only", async () => {
     const rows = await t.asUser(member, `update public.workspaces set max_users = 5 returning max_users`);
     expect(rows).toHaveLength(0);
-    expect(await t.asOwner(`select max_users from public.workspaces`)).toEqual([{ max_users: 2 }]);
+    expect(await t.asOwner(`select max_users from public.workspaces where id = ${ws}`)).toEqual([{ max_users: 2 }]);
   });
 });
 

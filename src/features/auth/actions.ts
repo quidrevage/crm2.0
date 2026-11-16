@@ -39,6 +39,44 @@ export async function signIn(_prev: FormState, formData: FormData): Promise<Form
   redirect("/");
 }
 
+/**
+ * Open registration: creates the account; the database gives it a workspace of its own
+ * (or puts it into the workspaces that invited this e-mail).
+ */
+export async function signUp(_prev: FormState, formData: FormData): Promise<FormState> {
+  const parsed = z
+    .object({
+      fullName: z.string().trim().min(2, "Вкажіть ім’я та прізвище.").max(120),
+      workspaceName: z.string().trim().max(120).optional(),
+      email,
+      password: z.string().min(MIN_PASSWORD, `Пароль має містити щонайменше ${MIN_PASSWORD} символів.`).max(72),
+      confirm: z.string(),
+    })
+    .refine((v) => v.password === v.confirm, "Паролі не збігаються.")
+    .safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.auth.signUp({
+    email: parsed.data.email,
+    password: parsed.data.password,
+    options: {
+      data: { full_name: parsed.data.fullName, workspace_name: parsed.data.workspaceName || undefined },
+      emailRedirectTo: `${await siteOrigin()}/auth/confirm?next=/`,
+    },
+  });
+  if (error) {
+    if (/password/i.test(error.message)) return { error: "Пароль занадто простий. Оберіть довший або складніший пароль." };
+    if (/rate|too many/i.test(error.message)) return { error: "Забагато спроб. Зачекайте кілька хвилин і спробуйте знову." };
+    if (/not allowed|disabled/i.test(error.message)) return { error: "Реєстрацію зараз вимкнено. Зверніться до адміністратора." };
+    return { error: "Не вдалося зареєструватися. Спробуйте ще раз." };
+  }
+  // Without e-mail confirmation the account is signed in straight away.
+  if (data.session) redirect("/");
+  // Same answer whether or not the address was already registered.
+  return { success: `Майже готово! Ми надіслали лист на ${parsed.data.email}. Перейдіть за посиланням у ньому, щоб підтвердити адресу.` };
+}
+
 export async function signOut() {
   const supabase = await createClient();
   await supabase.auth.signOut();
