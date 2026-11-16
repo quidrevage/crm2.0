@@ -1838,6 +1838,7 @@ export type Database = {
         }
         Returns: string
       }
+      clear_activity_history: { Args: { p_before?: string }; Returns: number }
       create_workspace: { Args: { p_name: string }; Returns: string }
       search_global: {
         Args: { max_per_kind?: number; q: string }

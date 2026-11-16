@@ -81,6 +81,7 @@ const entityNames: Record<string, { noun: string; href?: (e: ActivityEntry) => s
   notes: { noun: "нотатку", href: () => "/notes" },
   profiles: { noun: "профіль користувача", href: () => "/settings" },
   workspaces: { noun: "робочий простір", href: () => "/settings?tab=workspace" },
+  activity_logs: { noun: "історію дій", href: () => "/activity" },
   workspace_members: { noun: "учасника", href: () => "/settings?tab=users" },
   user_invitations: { noun: "запрошення", href: () => "/settings?tab=users" },
 };
@@ -100,6 +101,7 @@ export function describeActivity(e: ActivityEntry, statusName: (id?: string) => 
   if (e.entityType === "user_invitations" && e.action === "created") return "Надіслано запрошення";
   if (e.entityType === "workspace_members" && e.action === "created") return "Учасника додано до робочого простору";
   if (e.entityType === "workspaces" && e.action === "created") return "Створено робочий простір";
+  if (e.entityType === "activity_logs" && e.action === "cleared") return "Очищено історію дій";
   const status = e.changes.status;
   if (e.action === "updated" && status && "new" in status) {
     const label = (v: unknown) =>

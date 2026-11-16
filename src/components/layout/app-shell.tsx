@@ -18,7 +18,7 @@ import { WorkspaceSwitcher, type WorkspaceOption } from "@/features/workspaces/w
 import { ToastProvider } from "@/components/ui/toast";
 import { GlobalSearch } from "./global-search";
 import { SyncIndicator, useRealtimeSync } from "./realtime-sync";
-import { LookupsProvider } from "@/features/lookups/context";
+import { LookupsProvider, useLookups } from "@/features/lookups/context";
 import type { Lookups } from "@/features/lookups/queries";
 import { Logo, MobileBar, SidebarNav } from "./nav";
 
@@ -70,7 +70,8 @@ function NamePrompt() {
 
 function Header({ user }: { user: ShellUser }) {
   const form = useRecordForm();
-  const syncStatus = useRealtimeSync();
+  const { me } = useLookups();
+  const syncStatus = useRealtimeSync(me.id);
   const icon = "h-4 w-4";
   return (
     <header className="sticky top-0 z-30 flex h-12 items-center gap-2 border-b border-line bg-surface px-3 lg:px-6">

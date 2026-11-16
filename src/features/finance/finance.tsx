@@ -1,6 +1,7 @@
 "use client";
 
-import { Wallet } from "lucide-react";
+import { Pencil, Wallet } from "lucide-react";
+import { IconButton } from "@/components/ui/button";
 import { Badge, EmptyState } from "@/components/ui/display";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { cn } from "@/lib/cn";
@@ -28,6 +29,17 @@ function EditableTitle({ text, onEdit }: { text: string; onEdit: () => void }) {
   );
 }
 
+/** A visible edit button at the end of the row, for people who may change finance records. */
+function EditCell({ label, onEdit }: { label: string; onEdit: () => void }) {
+  const { canWriteFinance } = useLookups();
+  if (!canWriteFinance) return null;
+  return (
+    <IconButton label={label} onClick={onEdit}>
+      <Pencil className="h-4 w-4" />
+    </IconButton>
+  );
+}
+
 const without = <T,>(columns: Column<T>[], hide: string[]) => columns.filter((c) => !hide.includes(c.key));
 
 export function FeesTable({ rows, hide = [] }: { rows: FeeRow[]; hide?: string[] }) {
@@ -46,6 +58,7 @@ export function FeesTable({ rows, hide = [] }: { rows: FeeRow[]; hide?: string[]
         return <span className={cn("num whitespace-nowrap", balance > 0 ? "font-medium text-warning" : "text-muted")}>{formatMoney(balance)}</span>;
       },
     },
+    { key: "edit", header: "", align: "right", className: "w-12", cell: (f) => <EditCell label="Редагувати домовленість" onEdit={() => form.open("fee", editFee(f))} /> },
   ];
   return <DataTable columns={without(columns, hide)} rows={rows} rowKey={(f) => f.id} empty={empty("Погоджених гонорарів немає", "Додайте домовленість про гонорар, щоб бачити залишок до сплати.")} />;
 }
@@ -59,6 +72,7 @@ export function PaymentsTable({ rows, hide = [] }: { rows: Payment[]; hide?: str
     { key: "date", header: "Дата платежу", cell: (p) => <span className="num">{formatDate(p.paidOn)}</span> },
     { key: "method", header: "Спосіб", cell: (p) => p.method || "—", mobile: "hidden" },
     { key: "amount", header: "Сума", cell: (p) => money(p.amount), align: "right" },
+    { key: "edit", header: "", align: "right", className: "w-12", cell: (p) => <EditCell label="Редагувати платіж" onEdit={() => form.open("payment", editPayment(p))} /> },
   ];
   return <DataTable columns={without(columns, hide)} rows={rows} rowKey={(p) => p.id} empty={empty("Платежів ще не було")} />;
 }
@@ -79,6 +93,7 @@ export function ExpensesTable({ rows, hide = [] }: { rows: Expense[]; hide?: str
     { key: "case", header: "Справа", cell: (x) => <CaseLink id={x.caseId} /> },
     { key: "date", header: "Дата", cell: (x) => <span className="num">{formatDate(x.incurredOn)}</span> },
     { key: "amount", header: "Сума", cell: (x) => money(x.amount), align: "right" },
+    { key: "edit", header: "", align: "right", className: "w-12", cell: (x) => <EditCell label="Редагувати витрату" onEdit={() => form.open("expense", editExpense(x))} /> },
   ];
   return <DataTable columns={without(columns, hide)} rows={rows} rowKey={(x) => x.id} empty={empty("Витрат не зафіксовано")} />;
 }

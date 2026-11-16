@@ -116,3 +116,17 @@ describe("deleting a workspace", () => {
     expect(await t.asUser(bob, `select name from public.clients`)).toEqual([{ name: "Клієнт першої" }]);
   });
 });
+
+describe("clearing the history", () => {
+  it("is refused to a member", async () => {
+    await expect(t.asUser(bob, `select public.clear_activity_history()`)).rejects.toThrow(/ADMIN_REQUIRED/);
+  });
+
+  it("lets an administrator clear their workspace only, and records that it was cleared", async () => {
+    await t.asUser(alice, `update public.profiles set current_workspace_id = $1 where id = $2`, [first, alice]);
+    const [{ n }] = await t.asUser(alice, `select public.clear_activity_history() as n`);
+    expect(n).toBeGreaterThan(0);
+    const left = await t.asUser(alice, `select action, actor_id from public.activity_logs`);
+    expect(left).toEqual([{ action: "cleared", actor_id: alice }]);
+  });
+});

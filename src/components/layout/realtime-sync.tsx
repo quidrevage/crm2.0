@@ -18,7 +18,19 @@ type Status = "connecting" | "live" | "offline";
  * Row-level security also applies to these notifications.
  * Open forms keep their contents; a save over someone else's change is caught as a conflict.
  */
-export function useRealtimeSync(): Status {
+type ChangePayload = { new?: Record<string, unknown> | null };
+
+/**
+ * Who made the change, when the row says so. The person's own saves already refresh the page
+ * through the server action, so refreshing again here would only race with that update
+ * (React then warns "called use() to suspend… but did not call use() when it finished").
+ */
+function authorOf(payload: ChangePayload): unknown {
+  const row = payload.new ?? {};
+  return row.updated_by ?? row.created_by ?? row.uploaded_by ?? null;
+}
+
+export function useRealtimeSync(userId: string): Status {
   const router = useRouter();
   const [status, setStatus] = useState<Status>("connecting");
   const timer = useRef<number | undefined>(undefined);
@@ -47,7 +59,10 @@ export function useRealtimeSync(): Status {
 
     let channel = supabase.channel("shared-records");
     for (const table of TABLES) {
-      channel = channel.on("postgres_changes", { event: "*", schema: "public", table }, refresh);
+      channel = channel.on("postgres_changes", { event: "*", schema: "public", table }, (payload: ChangePayload) => {
+        if (authorOf(payload) === userId) return;
+        refresh();
+      });
     }
     let wasOffline = false;
     channel.subscribe((state) => {
@@ -70,7 +85,7 @@ export function useRealtimeSync(): Status {
       document.removeEventListener("visibilitychange", onVisible);
       void supabase.removeChannel(channel);
     };
-  }, [router]);
+  }, [router, userId]);
 
   return status;
 }
